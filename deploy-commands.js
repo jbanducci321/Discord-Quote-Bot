@@ -10,33 +10,29 @@ const commands = [
                 .setDescription('Who said the quote')
                 .setRequired(true))
         .addStringOption(option =>
-            option.setName('category')
-                .setDescription('Category for the quote')
-                .setRequired(true))
-        .addStringOption(option =>
             option.setName('quote')
                 .setDescription('The quote text')
                 .setRequired(true)),
 
     new SlashCommandBuilder()
         .setName('randomquote')
-        .setDescription('Get a random quote'),
+        .setDescription('Post a random quote in the general channel'),
 
     new SlashCommandBuilder()
         .setName('quotesbyperson')
-        .setDescription('Get a random quote from a specific person')
+        .setDescription('Post a random quote from a specific person in the general channel')
         .addStringOption(option =>
             option.setName('person')
                 .setDescription('Person name')
                 .setRequired(true)),
 
     new SlashCommandBuilder()
-        .setName('quotesbycategory')
-        .setDescription('Get a random quote from a category')
+        .setName('listquotes')
+        .setDescription('List saved quotes')
         .addStringOption(option =>
-            option.setName('category')
-                .setDescription('Category name')
-                .setRequired(true)),
+            option.setName('person')
+                .setDescription('Optional: filter by person')
+                .setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('editquote')
@@ -53,10 +49,6 @@ const commands = [
             option.setName('person')
                 .setDescription('New person name')
                 .setRequired(false))
-        .addStringOption(option =>
-            option.setName('category')
-                .setDescription('New category')
-                .setRequired(false))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
     new SlashCommandBuilder()
@@ -70,7 +62,7 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('everyonequote')
-        .setDescription('Ping everyone and post a random quote')
+        .setDescription('Ping everyone in general with a random quote')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 ].map(command => command.toJSON());
 

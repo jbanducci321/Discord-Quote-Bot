@@ -19,10 +19,14 @@ const GENERAL_CHANNEL_ID = process.env.GENERAL_CHANNEL_ID;
 // Daily at 8:00 AM
 const DAILY_CRON = '0 8 * * *';
 
+// Every hour at minute 0
+const HOURLY_CHANCE_CRON = '0 * * * *';
+
 function formatQuote(row) {
-    return `**Quote #${row.id}**\n**${row.quoted_person}**:\n"${row.quote_text}"`;
+    return `**${row.quoted_person}**:\n"${row.quote_text}"`;
 }
 
+// Keep IDs here so listquotes is useful for edit/delete
 function formatQuoteInline(row) {
     return `#${row.id} - ${row.quoted_person}: "${row.quote_text}"`;
 }
@@ -85,6 +89,7 @@ client.once(Events.ClientReady, async () => {
         console.error('Database connection failed:', err);
     }
 
+    // Daily 8 AM quote
     cron.schedule(DAILY_CRON, async () => {
         try {
             const generalChannel = await fetchGeneralChannel();
@@ -105,7 +110,36 @@ client.once(Events.ClientReady, async () => {
         }
     });
 
+    // Every hour, 5% chance to post a random quote
+    cron.schedule(HOURLY_CHANCE_CRON, async () => {
+        try {
+            const roll = Math.random();
+
+            if (roll >= 0.05) {
+                console.log(`Hourly random quote skipped. Roll was ${roll.toFixed(4)}`);
+                return;
+            }
+
+            const generalChannel = await fetchGeneralChannel();
+            const row = await getRandomQuote();
+
+            if (!row) {
+                console.log('No quotes found for hourly random chance post.');
+                return;
+            }
+
+            await generalChannel.send({
+                content: `🎲 **Lucky Hourly Quote**\n${formatQuote(row)}`
+            });
+
+            console.log(`Hourly random quote posted. Roll was ${roll.toFixed(4)}`);
+        } catch (err) {
+            console.error('Failed hourly random quote check:', err);
+        }
+    });
+
     console.log('Daily quote scheduler started.');
+    console.log('Hourly 5% quote scheduler started.');
 });
 
 client.on(Events.InteractionCreate, async interaction => {

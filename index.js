@@ -691,7 +691,7 @@ client.on(Events.InteractionCreate, async interaction => {
                         await user.send('67');
                         count++;
 
-                        if (count >= 30) {
+                        if (count >= 60) {
                             clearInterval(interval);
                             console.log(`Stopped purebrainrot DM for ${user.id}.`);
                         }
@@ -699,7 +699,7 @@ client.on(Events.InteractionCreate, async interaction => {
                         console.error('Failed to send purebrainrot DM:', err);
                         clearInterval(interval);
                     }
-                }, 2000);
+                }, 1000);
             } catch (err) {
                 console.error('purebrainrot command failed:', err);
 

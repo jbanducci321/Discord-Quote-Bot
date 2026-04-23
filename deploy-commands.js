@@ -97,6 +97,42 @@ const commands = [
     new SlashCommandBuilder()
         .setName('makedanielhappy')
         .setDescription('Send Daniel a random plane pic and who sent it'),
+    
+        new SlashCommandBuilder()
+        .setName('setreminder')
+        .setDescription('Set a reminder that DMs you until you stop it')
+        .addIntegerOption(option =>
+            option.setName('month')
+                .setDescription('Month number (1-12)')
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(12))
+        .addIntegerOption(option =>
+            option.setName('day')
+                .setDescription('Day of month')
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(31))
+        .addIntegerOption(option =>
+            option.setName('hour')
+                .setDescription('Hour in 24-hour time, LA time zone')
+                .setRequired(true)
+                .setMinValue(0)
+                .setMaxValue(23))
+        .addIntegerOption(option =>
+            option.setName('minute')
+                .setDescription('Minute')
+                .setRequired(true)
+                .setMinValue(0)
+                .setMaxValue(59))
+        .addStringOption(option =>
+            option.setName('message')
+                .setDescription('Reminder message')
+                .setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('stopreminder')
+        .setDescription('Stop your currently active reminder spam'),
 
 ].map(command => command.toJSON());
 

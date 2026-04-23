@@ -17,6 +17,11 @@ const BOT_CHANNEL_ID = process.env.BOT_CHANNEL_ID;
 const GENERAL_CHANNEL_ID = process.env.GENERAL_CHANNEL_ID;
 const APP_TIMEZONE = 'America/Los_Angeles';
 
+const REMINDER_POLL_CRON = '* * * * *';
+
+// Track reminder DM loops in memory so we do not start duplicates
+const activeReminderLoops = new Map();
+
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
 
 
@@ -206,6 +211,127 @@ async function requireBotChannel(interaction) {
     return false;
 }
 
+function getLosAngelesNowParts() {
+    const now = new Date();
+
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: APP_TIMEZONE,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false
+    });
+
+    const parts = formatter.formatToParts(now);
+
+    const get = type => Number(parts.find(part => part.type === type)?.value);
+
+    return {
+        year: get('year'),
+        month: get('month'),
+        day: get('day'),
+        hour: get('hour'),
+        minute: get('minute'),
+        second: get('second')
+    };
+}
+
+function buildReminderDateString(year, month, day, hour, minute) {
+    const yyyy = String(year);
+    const mm = String(month).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    const hh = String(hour).padStart(2, '0');
+    const min = String(minute).padStart(2, '0');
+
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:00`;
+}
+
+function isFutureReminder(month, day, hour, minute) {
+    const now = getLosAngelesNowParts();
+
+    const currentNumber =
+        now.year * 100000000 +
+        now.month * 1000000 +
+        now.day * 10000 +
+        now.hour * 100 +
+        now.minute;
+
+    const targetNumber =
+        now.year * 100000000 +
+        month * 1000000 +
+        day * 10000 +
+        hour * 100 +
+        minute;
+
+    return targetNumber > currentNumber;
+}
+
+async function startReminderLoop(reminder) {
+    if (activeReminderLoops.has(reminder.id)) {
+        return;
+    }
+
+    const user = await client.users.fetch(reminder.user_id);
+
+    const interval = setInterval(async () => {
+        try {
+            await user.send(
+                `⏰ Reminder: ${reminder.reminder_message}\n` +
+                `Use /stopreminder in the bot channel to stop this reminder.`
+            );
+        } catch (err) {
+            console.error(`Failed to send reminder DM for reminder ${reminder.id}:`, err);
+        }
+    }, 10000);
+
+    activeReminderLoops.set(reminder.id, interval);
+
+    // Send one immediately too
+    try {
+        await user.send(
+            `⏰ Reminder: ${reminder.reminder_message}\n` +
+            `Use /stopreminder in the bot channel to stop this reminder.`
+        );
+    } catch (err) {
+        console.error(`Failed to send initial reminder DM for reminder ${reminder.id}:`, err);
+    }
+}
+
+async function stopAllReminderLoopsForUser(userId) {
+    const [rows] = await pool.query(
+        `
+        SELECT id
+        FROM quote_bot_reminders
+        WHERE user_id = ? AND is_active = 1
+        `,
+        [userId]
+    );
+
+    for (const row of rows) {
+        const interval = activeReminderLoops.get(row.id);
+
+        if (interval) {
+            clearInterval(interval);
+            activeReminderLoops.delete(row.id);
+        }
+    }
+
+    if (rows.length > 0) {
+        await pool.query(
+            `
+            DELETE FROM quote_bot_reminders
+            WHERE user_id = ? AND is_active = 1
+            `,
+            [userId]
+        );
+    }
+
+    return rows.length;
+}
+
 client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
@@ -235,6 +361,50 @@ client.once(Events.ClientReady, async () => {
             console.log('Daily quote posted successfully.');
         } catch (err) {
             console.error('Failed to post daily quote:', err);
+        }
+    }, {
+        timezone: APP_TIMEZONE
+    });
+
+        // Reminder checker: every minute LA time
+    cron.schedule(REMINDER_POLL_CRON, async () => {
+        try {
+            const now = getLosAngelesNowParts();
+            const nowString = buildReminderDateString(
+                now.year,
+                now.month,
+                now.day,
+                now.hour,
+                now.minute
+            );
+
+            const [rows] = await pool.query(
+                `
+                SELECT id, user_id, username, reminder_message, remind_at
+                FROM quote_bot_reminders
+                WHERE is_active = 1
+                  AND has_triggered = 0
+                  AND remind_at <= ?
+                `,
+                [nowString]
+            );
+
+            for (const row of rows) {
+                await pool.query(
+                `
+                UPDATE quote_bot_reminders
+                SET has_triggered = 1,
+                    is_active = 1
+                WHERE id = ?
+                `,
+                [row.id]
+            );
+
+                await startReminderLoop(row);
+                console.log(`Started reminder loop for reminder ${row.id}.`);
+            }
+        } catch (err) {
+            console.error('Failed reminder poll:', err);
         }
     }, {
         timezone: APP_TIMEZONE
@@ -813,6 +983,79 @@ client.on(Events.InteractionCreate, async interaction => {
 
             await interaction.reply({
                 content: `Posted an @everyone quote in <#${GENERAL_CHANNEL_ID}>.`,
+                ephemeral: true
+            });
+        }
+
+        else if (commandName === 'setreminder') {
+            const month = interaction.options.getInteger('month');
+            const day = interaction.options.getInteger('day');
+            const hour = interaction.options.getInteger('hour');
+            const minute = interaction.options.getInteger('minute');
+            const message = interaction.options.getString('message').trim();
+
+            if (!isValidMonthDay(month, day)) {
+                await interaction.reply({
+                    content: 'That is not a valid month/day combination.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            if (!isFutureReminder(month, day, hour, minute)) {
+                await interaction.reply({
+                    content: 'That reminder time must be later than the current LA time.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const now = getLosAngelesNowParts();
+            const remindAt = buildReminderDateString(
+                now.year,
+                month,
+                day,
+                hour,
+                minute
+            );
+
+            const [result] = await pool.query(
+                `
+                INSERT INTO quote_bot_reminders
+                    (user_id, username, reminder_message, remind_at, is_active, has_triggered)
+                VALUES (?, ?, ?, ?, 1, 0)
+                `,
+                [
+                    interaction.user.id,
+                    interaction.user.username,
+                    message,
+                    remindAt
+                ]
+            );
+
+            await interaction.reply({
+                content:
+                    `✅ Reminder set.\n` +
+                    `Time: **${month}/${day} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}** LA time\n` +
+                    `Message: **${message}**\n\n` +
+                    `When it triggers, I will DM you every 10 seconds until you use **/stopreminder**.`,
+                ephemeral: true
+            });
+        }
+
+        else if (commandName === 'stopreminder') {
+            const stoppedCount = await stopAllReminderLoopsForUser(interaction.user.id);
+
+            if (stoppedCount === 0) {
+                await interaction.reply({
+                    content: 'You do not have any active triggered reminders right now.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            await interaction.reply({
+                content: `✅ Stopped and deleted **${stoppedCount}** active reminder(s).`,
                 ephemeral: true
             });
         }

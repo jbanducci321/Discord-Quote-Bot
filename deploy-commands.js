@@ -91,8 +91,12 @@ const commands = [
     .setDescription('Send Daniel a nice DM'),
 
     new SlashCommandBuilder()
-    .setName('purebrainrot')
-    .setDescription('Use at your own risk'),
+        .setName('purebrainrot')
+        .setDescription('Use at your own risk'),
+
+    new SlashCommandBuilder()
+        .setName('makedanielhappy')
+        .setDescription('Send Daniel a random plane pic and who sent it'),
 
 ].map(command => command.toJSON());
 

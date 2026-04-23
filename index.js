@@ -5,6 +5,7 @@ import {
     Events,
     ChannelType
 } from 'discord.js';
+import fetch from 'node-fetch';
 import cron from 'node-cron';
 import pool from './db.js';
 
@@ -15,6 +16,9 @@ const client = new Client({
 const BOT_CHANNEL_ID = process.env.BOT_CHANNEL_ID;
 const GENERAL_CHANNEL_ID = process.env.GENERAL_CHANNEL_ID;
 const APP_TIMEZONE = 'America/Los_Angeles';
+
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
+
 
 // Daily at 8:00 AM LA time
 const DAILY_CRON = '0 8 * * *';
@@ -30,6 +34,7 @@ const BIRTHDAY_CHECK_CRON = '0 0 * * *';
 
 // Hardcoded 67 ping target
 const SIX_SEVEN_VICTIM = '1016444274625237042'; // AKA Shannyn
+const DANIEL_USER_ID = "135491462849757185";
 
 // Hourly chance system
 const BASE_HOURLY_CHANCE = 5;
@@ -64,6 +69,44 @@ function isValidMonthDay(month, day) {
     };
 
     return day >= 1 && day <= (daysInMonth[month] ?? 0);
+}
+
+async function getRandomPlanePhoto() {
+    if (!PEXELS_API_KEY) {
+        throw new Error('PEXELS_API_KEY is missing from environment variables.');
+    }
+
+    const queries = ['plane', 'airplane', 'jet', 'aircraft'];
+    const randomQuery = queries[Math.floor(Math.random() * queries.length)];
+    const randomPage = Math.floor(Math.random() * 20) + 1;
+
+    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(randomQuery)}&per_page=20&page=${randomPage}&orientation=landscape`;
+
+    const response = await fetch(url, {
+        headers: {
+            Authorization: PEXELS_API_KEY
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Pexels API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    const photos = data?.photos ?? [];
+
+    if (photos.length === 0) {
+        throw new Error('No plane photos returned from Pexels.');
+    }
+
+    const photo = photos[Math.floor(Math.random() * photos.length)];
+
+    return {
+        imageUrl: photo.src?.large2x || photo.src?.large || photo.src?.original,
+        photographer: photo.photographer,
+        pexelsUrl: photo.url
+    };
 }
 
 async function getRandomQuote(excludeId = null) {
@@ -668,7 +711,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         else if (commandName === 'annoydaniel') {
             try {
-                const user = await client.users.fetch('135491462849757185');
+                const user = await client.users.fetch(DANIEL_USER_ID);
 
                 const senderMention = `<@${interaction.user.id}>`;
 
@@ -773,6 +816,39 @@ client.on(Events.InteractionCreate, async interaction => {
                 ephemeral: true
             });
         }
+
+        else if (commandName === 'makedanielhappy') {
+            try {
+                if (!DANIEL_USER_ID) {
+                    throw new Error('DANIEL_USER_ID is missing from environment variables.');
+                }
+
+                const danielUser = await client.users.fetch(DANIEL_USER_ID);
+                const senderMention = `<@${interaction.user.id}>`;
+
+                const photo = await getRandomPlanePhoto();
+
+                await danielUser.send({
+                    content:
+                        `✈️ A plane has arrived from ${senderMention}!\n` +
+                        `${photo.imageUrl}`
+                });
+
+                await interaction.reply({
+                    content: '✅ Sent Daniel a plane pic.',
+                    ephemeral: true
+                });
+
+            } catch (err) {
+                console.error('makedanielhappy failed:', err);
+
+                await interaction.reply({
+                    content: '❌ Failed to send Daniel a plane pic. Check console.',
+                    ephemeral: true
+                });
+            }
+        }
+
     } catch (err) {
         console.error(err);
 

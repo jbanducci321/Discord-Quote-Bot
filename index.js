@@ -1073,8 +1073,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 await danielUser.send({
                     content:
-                        `✈️ A plane has arrived from ${senderMention}!\n` +
-                        `${photo.imageUrl}`
+                        `✈️ A [plane](${photo.imageUrl}) has arrived from ${senderMention}!\n`
                 });
 
                 await interaction.reply({

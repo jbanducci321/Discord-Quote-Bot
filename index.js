@@ -39,6 +39,8 @@ const BIRTHDAY_CHECK_CRON = '0 0 * * *';
 
 // Hardcoded 67 ping target
 const SIX_SEVEN_VICTIM = '1016444274625237042'; // AKA Shannyn
+const MAY_FIRST_OVERRIDE_QUOTE_ID = 16; // Shannyn's favorite quote
+
 const DANIEL_USER_ID = "135491462849757185";
 
 // Hourly chance system
@@ -332,6 +334,71 @@ async function stopAllReminderLoopsForUser(userId) {
     return rows.length;
 }
 
+async function getQuoteById(id) {
+    const [rows] = await pool.query(
+        `
+        SELECT id, quote_text, quoted_person
+        FROM quote_bot_quotes
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [id]
+    );
+
+    return rows[0] ?? null;
+}
+
+// Sets all quotes to not used to restart daily quote cycle
+async function resetDailyQuoteCycle() {
+    await pool.query(`
+        UPDATE quote_bot_quotes
+        SET used_in_daily_cycle = 0
+    `);
+}
+
+// Gets the quote for the daily quote, makes sure it hasn't been used in the current cycle
+async function getNextDailyCycleQuote() {
+    let [rows] = await pool.query(`
+        SELECT id, quote_text, quoted_person
+        FROM quote_bot_quotes
+        WHERE used_in_daily_cycle = 0
+        ORDER BY RAND()
+        LIMIT 1
+    `);
+
+    if (rows.length === 0) { // If no more quotes are availible, restarts the cycle and tries again
+        await resetDailyQuoteCycle();
+
+        [rows] = await pool.query(`
+            SELECT id, quote_text, quoted_person
+            FROM quote_bot_quotes
+            WHERE used_in_daily_cycle = 0
+            ORDER BY RAND()
+            LIMIT 1
+        `);
+    }
+
+    return rows[0] ?? null;
+}
+
+// After a quote has been used its boolean value is changed to true
+async function markQuoteUsedInDailyCycle(id) {
+    await pool.query(
+        `
+        UPDATE quote_bot_quotes
+        SET used_in_daily_cycle = 1
+        WHERE id = ?
+        `,
+        [id]
+    );
+}
+
+// For a 'special' birthday surprise
+function isMayFirstInLosAngeles() {
+    const now = getLosAngelesNowParts();
+    return now.month === 5 && now.day === 1;
+}
+
 client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
@@ -346,7 +413,28 @@ client.once(Events.ClientReady, async () => {
     cron.schedule(DAILY_CRON, async () => {
         try {
             const generalChannel = await fetchGeneralChannel();
-            const row = await getRandomQuote(lastPostedQuoteId);
+
+            // May 1 override: post quote #16 and do NOT affect cycle state
+            if (isMayFirstInLosAngeles()) {
+                const overrideRow = await getQuoteById(MAY_FIRST_OVERRIDE_QUOTE_ID);
+
+                if (!overrideRow) {
+                    await generalChannel.send(
+                        `Daily quote override failed: quote #${MAY_FIRST_OVERRIDE_QUOTE_ID} was not found.`
+                    );
+                    return;
+                }
+
+                await generalChannel.send({
+                    content: `☀️ **Daily Quote**\n${formatQuote(overrideRow)}`
+                });
+
+                rememberLastQuote(overrideRow);
+                console.log(`Daily quote override posted for May 1 using quote #${MAY_FIRST_OVERRIDE_QUOTE_ID}.`);
+                return;
+            }
+
+            const row = await getNextDailyCycleQuote();
 
             if (!row) {
                 await generalChannel.send('No quotes found yet for the daily quote.');
@@ -357,8 +445,10 @@ client.once(Events.ClientReady, async () => {
                 content: `☀️ **Daily Quote**\n${formatQuote(row)}`
             });
 
+            await markQuoteUsedInDailyCycle(row.id);
             rememberLastQuote(row);
-            console.log('Daily quote posted successfully.');
+
+            console.log(`Daily cycle quote posted successfully. Marked quote #${row.id} as used.`);
         } catch (err) {
             console.error('Failed to post daily quote:', err);
         }
@@ -610,8 +700,8 @@ client.on(Events.InteractionCreate, async interaction => {
 
             const sql = `
                 INSERT INTO quote_bot_quotes
-                (quote_text, quoted_person, added_by_user_id, added_by_username)
-                VALUES (?, ?, ?, ?)
+                (quote_text, quoted_person, added_by_user_id, added_by_username, used_in_daily_cycle)
+                VALUES (?, ?, ?, ?, 0)
             `;
 
             const sqlParams = [

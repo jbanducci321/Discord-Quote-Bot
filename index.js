@@ -42,7 +42,7 @@ const SIX_SEVEN_VICTIM = '1016444274625237042'; // AKA Shannyn
 const DANIEL_USER_ID = "135491462849757185";
 
 // Hourly chance system
-const BASE_HOURLY_CHANCE = 5;
+const BASE_HOURLY_CHANCE = 2;
 let currentHourlyChance = BASE_HOURLY_CHANCE; // starts the currently hourly chance at a base 5%
 
 // Track last displayed quote so random posts do not repeat back-to-back
@@ -410,7 +410,7 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
-    // Every hour, chance starts at 5% and increases by 0.5% for each miss
+    // Every hour, chance starts at 2% and increases by 0.25% for each miss
     cron.schedule(HOURLY_CHANCE_CRON, async () => {
         try {
             const roll = Math.random() * 100;
@@ -419,7 +419,7 @@ client.once(Events.ClientReady, async () => {
                 console.log(
                     `Hourly quote skipped. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
                 );
-                currentHourlyChance += 0.5; // increments odds by 0.5 for each miss until it is hit
+                currentHourlyChance += 0.25; // increments odds by 0.25 for each miss until it is hit
                 return;
             }
 
@@ -471,55 +471,55 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
-    // ============================================================
-    // 67 DM SPAM (TEMPORARY)
-    // Sends 67 DMs for 1 minute at 6:07 PM
-    // TODO: COMMENT OUT THIS ENTIRE BLOCK WHEN DONE ANNOYING SHANNYN
-    // ============================================================
-    cron.schedule(SIXTY_SEVEN_CRON, async () => {
-        try {
-            const user = await client.users.fetch(SIX_SEVEN_VICTIM);
+    // // ============================================================
+    // // 67 DM SPAM (TEMPORARY)
+    // // Sends 67 DMs for 1 minute at 6:07 PM
+    // // TODO: COMMENT OUT THIS ENTIRE BLOCK WHEN DONE ANNOYING SHANNYN
+    // // ============================================================
+    // cron.schedule(SIXTY_SEVEN_CRON, async () => {
+    //     try {
+    //         const user = await client.users.fetch(SIX_SEVEN_VICTIM);
 
-            console.log('Starting 67 DM spam');
+    //         console.log('Starting 67 DM spam');
 
-            const totalMessages = 67;
-            const totalDuration = 60000; // 60 seconds
-            const startTime = Date.now();
+    //         const totalMessages = 67;
+    //         const totalDuration = 60000; // 60 seconds
+    //         const startTime = Date.now();
 
-            let count = 0;
+    //         let count = 0;
 
-            const sendNext = async () => {
-                if (count >= totalMessages) {
-                    console.log(`Total sent DMs: ${count}`);
-                    console.log('Finished 67 DM spam.');
-                    return;
-                }
+    //         const sendNext = async () => {
+    //             if (count >= totalMessages) {
+    //                 console.log(`Total sent DMs: ${count}`);
+    //                 console.log('Finished 67 DM spam.');
+    //                 return;
+    //             }
 
-                try {
-                    await user.send('67');
-                    count++;
-                    // console.log(`Sent DM #${count}`);
-                } catch (err) {
-                    console.error('Failed to send DM:', err);
-                }
+    //             try {
+    //                 await user.send('67');
+    //                 count++;
+    //                 // console.log(`Sent DM #${count}`);
+    //             } catch (err) {
+    //                 console.error('Failed to send DM:', err);
+    //             }
                 
 
-                // Calculate when the NEXT message should be sent
-                const nextTargetTime = startTime + ((count + 1) * totalDuration / totalMessages);
-                const delay = nextTargetTime - Date.now();
+    //             // Calculate when the NEXT message should be sent
+    //             const nextTargetTime = startTime + ((count + 1) * totalDuration / totalMessages);
+    //             const delay = nextTargetTime - Date.now();
 
-                setTimeout(sendNext, Math.max(0, delay));
-            };
+    //             setTimeout(sendNext, Math.max(0, delay));
+    //         };
 
-            // Start immediately
-            sendNext();
+    //         // Start immediately
+    //         sendNext();
 
-        } catch (err) {
-            console.error('Failed to start DM test:', err);
-        }
-    }, {
-        timezone: APP_TIMEZONE
-    });
+    //     } catch (err) {
+    //         console.error('Failed to start DM test:', err);
+    //     }
+    // }, {
+    //     timezone: APP_TIMEZONE
+    // });
 
     // Birthday checker: every day right at 00:00 LA time
     cron.schedule(BIRTHDAY_CHECK_CRON, async () => {
@@ -1073,7 +1073,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 await danielUser.send({
                     content:
-                        `✈️ A [plane](${photo.imageUrl}) has arrived from ${senderMention}!\n`
+                         `✈️ A [plane](${photo.imageUrl}) has arrived from ${senderMention}!\n`
                 });
 
                 await interaction.reply({

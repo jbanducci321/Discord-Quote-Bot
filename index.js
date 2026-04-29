@@ -1153,6 +1153,32 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
+        else if (commandName === 'quotebyid') {
+            const id = interaction.options.getInteger('id');
+            const row = await getQuoteById(id);
+
+            if (!row) {
+                await interaction.reply({
+                    content: `Quote ID **${id}** was not found.`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const generalChannel = await fetchGeneralChannel();
+
+            await generalChannel.send({
+                content: formatQuote(row)
+            });
+
+            rememberLastQuote(row);
+
+            await interaction.reply({
+                content: `Posted quote **#${id}** in <#${GENERAL_CHANNEL_ID}>.`,
+                ephemeral: true
+            });
+        }
+
         else if (commandName === 'makedanielhappy') {
             try {
                 if (!DANIEL_USER_ID) {
@@ -1211,17 +1237,17 @@ client.on(Events.MessageCreate, async message => {
 
         // Only react to the 67 victim
         if (message.author.id === SIX_SEVEN_VICTIM){
-            await message.react('1499118832566931526');
+            await message.react('1499114764482117693');
             return;
         }
 
-        if (message.author.id === '135491462849757185') {
-            await message.react('1499117827226079293');
-            return;
-        }
+        // if (message.author.id === '135491462849757185') {
+        //     await message.react('1499117827226079293');
+        //     return;
+        // }
 
-        // React with your animated emoji
-        await message.react('1499114764482117693');
+        // // React with your animated emoji
+        // await message.react('1499114764482117693');
     } catch (err) {
         console.error('Failed to react to target user message:', err);
     }

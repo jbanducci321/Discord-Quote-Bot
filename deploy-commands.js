@@ -133,6 +133,14 @@ const commands = [
     new SlashCommandBuilder()
         .setName('stopreminder')
         .setDescription('Stop your currently active reminder spam'),
+    
+    new SlashCommandBuilder()
+        .setName('quotebyid')
+        .setDescription('Post a specific quote by its ID in the general channel')
+        .addIntegerOption(option =>
+            option.setName('id')
+                .setDescription('Quote ID')
+                .setRequired(true)),
 
 ].map(command => command.toJSON());
 

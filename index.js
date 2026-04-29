@@ -1210,7 +1210,7 @@ client.on(Events.MessageCreate, async message => {
         if (message.channelId !== GENERAL_CHANNEL_ID) return;
 
         // Only react to the 67 victim
-        if (message.author.id !== SIX_SEVEN_VICTIM){
+        if (message.author.id === SIX_SEVEN_VICTIM){
             await message.react('1499118832566931526');
             return;
         }

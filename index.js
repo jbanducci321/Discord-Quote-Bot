@@ -10,7 +10,10 @@ import cron from 'node-cron';
 import pool from './db.js';
 
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages
+    ]
 });
 
 const BOT_CHANNEL_ID = process.env.BOT_CHANNEL_ID;
@@ -1195,6 +1198,32 @@ client.on(Events.InteractionCreate, async interaction => {
                 ephemeral: true
             });
         }
+    }
+});
+
+client.on(Events.MessageCreate, async message => {
+    try {
+        // Ignore bots
+        if (message.author.bot) return;
+
+        // Only react in the general channel
+        if (message.channelId !== GENERAL_CHANNEL_ID) return;
+
+        // Only react to the 67 victim
+        if (message.author.id !== SIX_SEVEN_VICTIM){
+            await message.react('1499118832566931526');
+            return;
+        }
+
+        if (message.author.id === '135491462849757185') {
+            await message.react('1499117827226079293');
+            return;
+        }
+
+        // React with your animated emoji
+        await message.react('1499114764482117693');
+    } catch (err) {
+        console.error('Failed to react to target user message:', err);
     }
 });
 

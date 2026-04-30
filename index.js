@@ -1232,24 +1232,24 @@ client.on(Events.MessageCreate, async message => {
         // Ignore bots
         if (message.author.bot) return;
 
-        // Only react in the general channel
-        if (message.channelId !== GENERAL_CHANNEL_ID) return;
-
-        // Only react to the 67 victim
-        if (message.author.id === SIX_SEVEN_VICTIM){
-            await message.react('1499114764482117693');
-            return;
+        // =========================================
+        // @everyone detector
+        // =========================================
+        if (message.mentions.everyone) {
+            await message.reply('<:everyone:1499279292218085376>');
         }
 
-        // if (message.author.id === '135491462849757185') {
-        //     await message.react('1499117827226079293');
-        //     return;
-        // }
+        // =========================================
+        // 67 victim reaction
+        // =========================================
+        if (message.channelId !== GENERAL_CHANNEL_ID) return;
+        if (message.author.id !== SIX_SEVEN_VICTIM) return;
 
-        // // React with your animated emoji
-        // await message.react('1499114764482117693');
+        await message.react('1499114764482117693');
+        
+
     } catch (err) {
-        console.error('Failed to react to target user message:', err);
+        console.error('Message handler failed:', err);
     }
 });
 

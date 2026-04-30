@@ -544,25 +544,25 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
-    // ============================================================
-    // 67 FEATURE
-    // Comment out or remove this whole block if it gets too annoying
-    // ============================================================
-    cron.schedule(SIXTY_SEVEN_CRON, async () => {
-        try {
-            const generalChannel = await fetchGeneralChannel();
+    // // ============================================================
+    // // 67 FEATURE
+    // // Comment out or remove this whole block if it gets too annoying
+    // // ============================================================
+    // cron.schedule(SIXTY_SEVEN_CRON, async () => {
+    //     try {
+    //         const generalChannel = await fetchGeneralChannel();
 
-            await generalChannel.send({
-                content: `<@${SIX_SEVEN_VICTIM}> 67`
-            });
+    //         await generalChannel.send({
+    //             content: `<@${SIX_SEVEN_VICTIM}> 67`
+    //         });
 
-            console.log('Posted daily 67 message.');
-        } catch (err) {
-            console.error('Failed to post 67 message:', err);
-        }
-    }, {
-        timezone: APP_TIMEZONE
-    });
+    //         console.log('Posted daily 67 message.');
+    //     } catch (err) {
+    //         console.error('Failed to post 67 message:', err);
+    //     }
+    // }, {
+    //     timezone: APP_TIMEZONE
+    // });
 
     // // ============================================================
     // // 67 DM SPAM (TEMPORARY)
@@ -1229,23 +1229,53 @@ client.on(Events.InteractionCreate, async interaction => {
 
 client.on(Events.MessageCreate, async message => {
     try {
-        // Ignore bots
-        if (message.author.bot) return;
+        // Ignores bots
+        if (message.author.bot) {
+            return;
+        }
 
-        // =========================================
+        // Only runs this code in the general channel
+        if (message.channelId !== GENERAL_CHANNEL_ID) {
+            return;
+        }
+
+        // Normalizes the message for case-insensitive checks
+        const content = message.content.toLowerCase();
+
         // @everyone detector
-        // =========================================
         if (message.mentions.everyone) {
-            await message.reply('<:everyone:1499279292218085376>');
+            await message.react('1499476464683323463'); // Reacts with specified emote when @everyone used
         }
 
         // =========================================
-        // 67 victim reaction
+        // Keyword → emoji reaction system
         // =========================================
-        if (message.channelId !== GENERAL_CHANNEL_ID) return;
-        if (message.author.id !== SIX_SEVEN_VICTIM) return;
+        const keywordReactions = [
+            {
+                words: [
+                    'fish', 'tilapia', 'tuna', 'salmon',
+                    'cod', 'trout', 'bass', 'catfish',
+                    'sardine', 'anchovy', 'mackerel',
+                    'halibut', 'snapper'
+                ],
+                emoji: '1499476519028916254'
+            },
+            {
+                words: ['plane', 'airplane', 'jet'],
+                emoji: '1499479493331386470'
+            }
+        ];
 
-        await message.react('1499114764482117693');
+        for (const entry of keywordReactions) {
+            if (entry.words.some(word => content.includes(word))) {
+                await message.react(entry.emoji);
+            }
+        }
+
+        // // Reacts specified emote to a specific person
+        // if (message.author.id === SIX_SEVEN_VICTIM){
+        //     await message.react('1499114764482117693');
+        // }
         
 
     } catch (err) {

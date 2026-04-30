@@ -1264,6 +1264,12 @@ client.on(Events.MessageCreate, async message => {
             {
                 words: ['plane', 'airplane', 'jet'],
                 emoji: '1499479493331386470'
+            },
+            {
+                words: ['penis', 'goon', 'gooning', 'pussy', 'dick', 'cock', 'gooner', 'hentai', 'cum',
+                    'cumming', 'sex',
+                ],
+                emoji: '1499518517311963166'
             }
         ];
 

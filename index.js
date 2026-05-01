@@ -1246,6 +1246,7 @@ client.on(Events.MessageCreate, async message => {
         // @everyone detector
         if (message.mentions.everyone) {
             await message.react('1499476464683323463'); // Reacts with specified emote when @everyone used
+            await message.react('1499892336161718430');
         }
 
         // =========================================
@@ -1262,7 +1263,7 @@ client.on(Events.MessageCreate, async message => {
                 emoji: '1499476519028916254'
             },
             {
-                words: ['plane', 'airplane', 'jet'],
+                words: ['plane', 'airplane', 'jet', 'flight', 'planes', 'daniel'],
                 emoji: '1499479493331386470'
             },
             {

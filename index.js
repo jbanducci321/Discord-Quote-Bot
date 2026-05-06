@@ -1271,7 +1271,11 @@ client.on(Events.MessageCreate, async message => {
                     'cumming', 'sex',
                 ],
                 emoji: '1499518517311963166'
-            }
+            },
+            {
+                words: ['67', '6 7', 'six seven', 'sixseven', 'sixty seven', 'brainrot'],
+                emoji: '1501600308172689438'
+            },
         ];
 
         for (const entry of keywordReactions) {

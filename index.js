@@ -871,7 +871,8 @@ client.on(Events.InteractionCreate, async interaction => {
                             'Neil',
                             'Daniel',
                             'Tim',
-                            'Kris'
+                            'Kris',
+                            'Jacob'
                         )
                     )
                     SELECT

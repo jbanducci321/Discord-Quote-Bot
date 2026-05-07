@@ -880,11 +880,10 @@ client.on(Events.InteractionCreate, async interaction => {
                             quote_text
                         FROM ranked_quotes
                         WHERE rn = 1
-                        ORDER BY RAND();`
+                        ORDER BY RAND()
+                        `;
 
-            const sqlParams = [];
-
-            const [rows] = await pool.query(sql, sqlParams);
+            const [rows] = await pool.query(sql);
 
             if (rows.length === 0) {
                 await interaction.reply({
@@ -894,12 +893,14 @@ client.on(Events.InteractionCreate, async interaction => {
                 return;
             }
 
-            const output = 'Playing the hits!\n\n' + rows.map(formatQuoteInline).join('\n\n');
+            const output = 'Playing the hits!\n\n' + rows.map(formatQuote).join('\n\n');
 
             const generalChannel = await fetchGeneralChannel();
 
             await generalChannel.send({
-                content: output
+                content: output.length > 1900
+                ? output.slice(0, 1900) + '\n\n...'
+                : output
             });
 
             await interaction.reply({

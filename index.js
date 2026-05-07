@@ -915,46 +915,81 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.deferReply({ ephemeral: true });
 
             try {
-                let sql = `WITH ranked_quotes AS (
-                                SELECT
-                                    quoted_person,
-                                    quote_text,
-                                    ROW_NUMBER() OVER (
-                                        PARTITION BY quoted_person
-                                        ORDER BY RAND()
-                                    ) AS rn
-                                FROM quote_bot_quotes
-                                WHERE quoted_person IN (
-                                    'Shannyn',
-                                    'Neil',
-                                    'Daniel',
-                                    'Tim',
-                                    'Kris',
-                                    'Jacob'
-                                )
-                            )
-                            SELECT
-                                quoted_person,
-                                quote_text
-                            FROM ranked_quotes
-                            WHERE rn = 1
-                            ORDER BY RAND()
-                            `;
+
+                console.time('playTheHits_total');
+
+                const sql = `
+                    SELECT
+                        quoted_person,
+                        quote_text
+                    FROM quote_bot_quotes
+                    WHERE quoted_person IN (
+                        'Shannyn',
+                        'Neil',
+                        'Daniel',
+                        'Tim',
+                        'Kris',
+                        'Jacob'
+                    )
+                `;
+
+                console.time('sql_query');
 
                 const [rows] = await pool.query(sql);
 
-                if (rows.length === 0) {
+                console.timeEnd('sql_query');
+
+                if (!rows.length) {
+
                     await interaction.editReply({
-                        content: `No quotes found.`
+                        content: 'No quotes found.'
                     });
+
                     return;
                 }
 
+                // Group quotes by person
+                const groupedQuotes = {};
+
+                for (const row of rows) {
+
+                    if (!groupedQuotes[row.quoted_person]) {
+                        groupedQuotes[row.quoted_person] = [];
+                    }
+
+                    groupedQuotes[row.quoted_person].push(row);
+                }
+
+                // Pick one random quote per person
+                const selectedQuotes = Object.values(groupedQuotes).map(quotes => {
+                    return quotes[Math.floor(Math.random() * quotes.length)];
+                });
+
+                // Shuffle final output order
+                selectedQuotes.sort(() => Math.random() - 0.5);
+
                 const output =
                     'Playing the hits!\n\n' +
-                    rows.map(formatQuote).join('\n\n');
+                    selectedQuotes.map(formatQuote).join('\n\n');
 
-                const generalChannel = await fetchGeneralChannel();
+                console.time('fetch_channel');
+
+                // Prefer cache over fetch for speed
+                const generalChannel =
+                    client.channels.cache.get(GENERAL_CHANNEL_ID);
+
+                console.timeEnd('fetch_channel');
+
+                if (!generalChannel) {
+
+                    await interaction.editReply({
+                        content: 'Could not find the general channel.'
+                    });
+
+                    return;
+                }
+
+                console.time('send_message');
 
                 await generalChannel.send({
                     content:
@@ -963,17 +998,31 @@ client.on(Events.InteractionCreate, async interaction => {
                             : output
                 });
 
+                console.timeEnd('send_message');
+
                 await interaction.editReply({
                     content: `Playing the hits in <#${GENERAL_CHANNEL_ID}>.`
                 });
 
+                console.timeEnd('playTheHits_total');
+
             } catch (err) {
 
-                console.error(err);
+                console.error('playTheHits error:', err);
 
-                await interaction.editReply({
-                    content: 'Something went wrong.'
-                });
+                if (interaction.deferred || interaction.replied) {
+
+                    await interaction.editReply({
+                        content: 'Something went wrong.'
+                    });
+
+                } else {
+
+                    await interaction.reply({
+                        content: 'Something went wrong.',
+                        ephemeral: true
+                    });
+                }
             }
         }
 

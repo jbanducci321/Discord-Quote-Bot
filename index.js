@@ -896,10 +896,14 @@ client.on(Events.InteractionCreate, async interaction => {
 
             const output = rows.map(formatQuoteInline).join('\n\n');
 
+            const generalChannel = await fetchGeneralChannel();
+
+            await generalChannel.send({
+                content: output
+            });
+
             await interaction.reply({
-                content: output.length > 1900
-                ? output.slice(0, 1900) + '\n\n...'
-                : output,
+                content: `Posted quotes **#${id}** in <#${GENERAL_CHANNEL_ID}>.`,
                 ephemeral: true
             });
         }

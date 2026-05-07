@@ -911,56 +911,70 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         else if (commandName === 'playTheHits') {
-            let sql = `WITH ranked_quotes AS (
+
+            await interaction.deferReply({ ephemeral: true });
+
+            try {
+                let sql = `WITH ranked_quotes AS (
+                                SELECT
+                                    quoted_person,
+                                    quote_text,
+                                    ROW_NUMBER() OVER (
+                                        PARTITION BY quoted_person
+                                        ORDER BY RAND()
+                                    ) AS rn
+                                FROM quote_bot_quotes
+                                WHERE quoted_person IN (
+                                    'Shannyn',
+                                    'Neil',
+                                    'Daniel',
+                                    'Tim',
+                                    'Kris',
+                                    'Jacob'
+                                )
+                            )
                             SELECT
                                 quoted_person,
-                                quote_text,
-                                ROW_NUMBER() OVER (
-                                    PARTITION BY quoted_person
-                                    ORDER BY RAND()
-                                ) AS rn
-                            FROM quote_bot_quotes
-                            WHERE quoted_person IN (
-                                'Shannyn',
-                                'Neil',
-                                'Daniel',
-                                'Tim',
-                                'Kris',
-                                'Jacob'
-                            )
-                        )
-                        SELECT
-                            quoted_person,
-                            quote_text
-                        FROM ranked_quotes
-                        WHERE rn = 1
-                        ORDER BY RAND()
-                        `;
+                                quote_text
+                            FROM ranked_quotes
+                            WHERE rn = 1
+                            ORDER BY RAND()
+                            `;
 
-            const [rows] = await pool.query(sql);
+                const [rows] = await pool.query(sql);
 
-            if (rows.length === 0) {
-                await interaction.reply({
-                   content: `No quotes found.`,
-                   ephemeral: true 
+                if (rows.length === 0) {
+                    await interaction.editReply({
+                        content: `No quotes found.`
+                    });
+                    return;
+                }
+
+                const output =
+                    'Playing the hits!\n\n' +
+                    rows.map(formatQuote).join('\n\n');
+
+                const generalChannel = await fetchGeneralChannel();
+
+                await generalChannel.send({
+                    content:
+                        output.length > 1900
+                            ? output.slice(0, 1900) + '\n\n...'
+                            : output
                 });
-                return;
+
+                await interaction.editReply({
+                    content: `Playing the hits in <#${GENERAL_CHANNEL_ID}>.`
+                });
+
+            } catch (err) {
+
+                console.error(err);
+
+                await interaction.editReply({
+                    content: 'Something went wrong.'
+                });
             }
-
-            const output = 'Playing the hits!\n\n' + rows.map(formatQuote).join('\n\n');
-
-            const generalChannel = await fetchGeneralChannel();
-
-            await generalChannel.send({
-                content: output.length > 1900
-                ? output.slice(0, 1900) + '\n\n...'
-                : output
-            });
-
-            await interaction.reply({
-                content: `Playing the hits in <#${GENERAL_CHANNEL_ID}>.`,
-                ephemeral: true
-            });
         }
 
         else if (commandName === 'stats') {

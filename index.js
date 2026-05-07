@@ -856,6 +856,58 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
+        else if (commandName === 'playTheHits') {
+            let sql = `WITH ranked_quotes AS (
+                        SELECT
+                            quoted_person,
+                            quote_text,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY quoted_person
+                                ORDER BY RAND()
+                            ) AS rn
+                        FROM quote_bot_quotes
+                        WHERE quoted_person IN (
+                            'Shannyn',
+                            'Neil',
+                            'Daniel',
+                            'Tim',
+                            'Kris',
+                            'Jacob'
+                        )
+                    )
+                    SELECT
+                        quoted_person,
+                        quote_text
+                    FROM ranked_quotes
+                    WHERE rn = 1
+                    ORDER BY RAND();`
+
+            const sqlParams = [];
+
+            const [rows] = await pool.query(sql, sqlParams);
+
+            if (rows.length === 0) {
+                await interaction.reply({
+                   content: `No quotes found.`,
+                   ephemeral: true 
+                });
+                return;
+            }
+
+            const output = rows.map(formatQuoteInline).join('\n\n');
+
+            const generalChannel = await fetchGeneralChannel();
+
+            await generalChannel.send({
+                content: output
+            });
+
+            await interaction.reply({
+                content: `Posted quotes **#${id}** in <#${GENERAL_CHANNEL_ID}>.`,
+                ephemeral: true
+            });
+        }
+
         else if (commandName === 'stats') {
             const [[totalsRow]] = await pool.query(`
                 SELECT

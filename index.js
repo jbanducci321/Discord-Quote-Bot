@@ -54,6 +54,32 @@ let currentHourlyChance = BASE_HOURLY_CHANCE; // starts the currently hourly cha
 // Track last displayed quote so random posts do not repeat back-to-back
 let lastPostedQuoteId = null;
 
+async function getDailyWord() {
+    if (!process.env.WORDNIK_API_KEY) {
+        throw new Error('WORDNIK_API_KEY missing');
+    }
+
+    const res = await fetch('https://api.wordnik.com/v4/words.json/wordOfTheDay', {
+        headers: {
+            api_key: process.env.WORDNIK_API_KEY
+        }
+    });
+
+    if (!res.ok) {
+        throw new Error(`Wordnik error: ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    const defObj = data.definitions?.[0];
+
+    return {
+        word: data.word,
+        definition: defObj?.text || 'No definition found.',
+        partOfSpeech: defObj?.partOfSpeech || 'unknown'
+    };
+}
+
 function formatQuote(row) {
     return `**${row.quoted_person}**:\n"${row.quote_text}"`;
 }
@@ -413,10 +439,30 @@ client.once(Events.ClientReady, async () => {
         console.error('Database connection failed:', err);
     }
 
-    // Daily 8 AM quote
+    // Daily 8 AM quote + word
     cron.schedule(DAILY_CRON, async () => {
         try {
             const generalChannel = await fetchGeneralChannel();
+
+            // =========================
+            // DAILY WORD
+            // =========================
+            let dailyWordText = '';
+
+            try {
+                const wordEntry = await getDailyWord();
+
+                dailyWordText =
+                    `📚 **Daily Word**\n` +
+                    `**${wordEntry.word}** *(${wordEntry.partOfSpeech})*\n` +
+                    `${wordEntry.definition}\n\n`;
+            } catch (err) {
+                console.error('Failed to fetch daily word:', err);
+
+                dailyWordText =
+                    `📚 **Daily Word**\n` +
+                    `Daily word unavailable today.\n\n`;
+            }
 
             // May 1 override: post quote #16 and do NOT affect cycle state
             if (isMayFirstInLosAngeles()) {
@@ -424,13 +470,16 @@ client.once(Events.ClientReady, async () => {
 
                 if (!overrideRow) {
                     await generalChannel.send(
+                        dailyWordText +
                         `Daily quote override failed: quote #${MAY_FIRST_OVERRIDE_QUOTE_ID} was not found.`
                     );
                     return;
                 }
 
                 await generalChannel.send({
-                    content: `☀️ **Daily Quote**\n${formatQuote(overrideRow)}`
+                    content:
+                        dailyWordText +
+                        `☀️ **Daily Quote**\n${formatQuote(overrideRow)}`
                 });
 
                 rememberLastQuote(overrideRow);
@@ -441,20 +490,25 @@ client.once(Events.ClientReady, async () => {
             const row = await getNextDailyCycleQuote();
 
             if (!row) {
-                await generalChannel.send('No quotes found yet for the daily quote.');
+                await generalChannel.send(
+                    dailyWordText +
+                    'No quotes found yet for the daily quote.'
+                );
                 return;
             }
 
             await generalChannel.send({
-                content: `☀️ **Daily Quote**\n${formatQuote(row)}`
+                content:
+                    dailyWordText +
+                    `☀️ **Daily Quote**\n${formatQuote(row)}`
             });
 
             await markQuoteUsedInDailyCycle(row.id);
             rememberLastQuote(row);
 
-            console.log(`Daily cycle quote posted successfully. Marked quote #${row.id} as used.`);
+            console.log(`Daily word and quote posted successfully. Marked quote #${row.id} as used.`);
         } catch (err) {
-            console.error('Failed to post daily quote:', err);
+            console.error('Failed to post daily word/quote:', err);
         }
     }, {
         timezone: APP_TIMEZONE

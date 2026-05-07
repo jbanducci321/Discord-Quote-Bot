@@ -133,6 +133,10 @@ const commands = [
     new SlashCommandBuilder()
         .setName('stopreminder')
         .setDescription('Stop your currently active reminder spam'),
+
+    new SlashCommandBuilder()
+        .setName('playthehits')
+        .setDescription('Play the hits'),
     
     new SlashCommandBuilder()
         .setName('quotebyid')

@@ -48,7 +48,7 @@ const MAY_FIRST_OVERRIDE_QUOTE_ID = 16; // Shannyn's favorite quote
 const DANIEL_USER_ID = "135491462849757185";
 
 // Hourly chance system
-const BASE_HOURLY_CHANCE = 2;
+const BASE_HOURLY_CHANCE = 1;
 let currentHourlyChance = BASE_HOURLY_CHANCE; // starts the currently hourly chance at a base 5%
 
 // Track last displayed quote so random posts do not repeat back-to-back
@@ -558,7 +558,7 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
-    // Every hour, chance starts at 2% and increases by 0.25% for each miss
+    // Code for the random hourly quote logic
     cron.schedule(HOURLY_CHANCE_CRON, async () => {
         try {
             const roll = Math.random() * 100;
@@ -567,7 +567,7 @@ client.once(Events.ClientReady, async () => {
                 console.log(
                     `Hourly quote skipped. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
                 );
-                currentHourlyChance += 0.25; // increments odds by 0.25 for each miss until it is hit
+                currentHourlyChance += 0.1; // increments odds by 0.1 for each miss until it is hit
                 return;
             }
 
@@ -910,7 +910,7 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
-        else if (commandName === 'playTheHits') {
+        else if (commandName === 'playthehits') {
 
             await interaction.deferReply({ ephemeral: true });
 

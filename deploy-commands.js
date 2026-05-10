@@ -139,6 +139,10 @@ const commands = [
         .setDescription('Play the hits'),
     
     new SlashCommandBuilder()
+        .setName('joke')
+        .setDescription('Post a random joke'),
+    
+    new SlashCommandBuilder()
         .setName('quotebyid')
         .setDescription('Post a specific quote by its ID in the general channel')
         .addIntegerOption(option =>

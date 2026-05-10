@@ -89,6 +89,36 @@ function formatQuoteInline(row) {
     return `#${row.id} - ${row.quoted_person}: "${row.quote_text}"`;
 }
 
+async function getRandomJoke(category = 'Any') {
+    const url = `https://v2.jokeapi.dev/joke/${category}`;
+
+    //use these if jokes are too explicit
+        // `https://v2.jokeapi.dev/joke/${category}` +
+        // `?blacklistFlags=nsfw,religious,political,racist,sexist,explicit`;
+
+    const res = await fetch(url);
+
+    if (!res.ok) {
+        throw new Error(`JokeAPI error: ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    if (data.error) {
+        throw new Error(data.message || 'JokeAPI returned an error.');
+    }
+
+    if (data.type === 'single') {
+        return data.joke;
+    }
+
+    if (data.type === 'twopart') {
+        return `${data.setup}\n${data.delivery}`;
+    }
+
+    return 'No joke found.';
+}
+
 function isValidMonthDay(month, day) {
     const daysInMonth = {
         1: 31,
@@ -464,6 +494,25 @@ client.once(Events.ClientReady, async () => {
                     `Daily word unavailable today.\n\n`;
             }
 
+            // =========================
+            // DAILY PROGRAMMING JOKE
+            // =========================
+            let dailyJokeText = '';
+
+            try {
+                const joke = await getRandomJoke('Programming');
+
+                dailyJokeText =
+                    `😂 **Daily Programming Joke**\n` +
+                    `${joke}\n\n`;
+            } catch (err) {
+                console.error('Failed to fetch daily joke:', err);
+
+                dailyJokeText =
+                    `😂 **Daily Programming Joke**\n` +
+                    `Daily joke unavailable today.\n\n`;
+            }
+
             // May 1 override: post quote #16 and do NOT affect cycle state
             if (isMayFirstInLosAngeles()) {
                 const overrideRow = await getQuoteById(MAY_FIRST_OVERRIDE_QUOTE_ID);
@@ -492,21 +541,22 @@ client.once(Events.ClientReady, async () => {
             if (!row) {
                 await generalChannel.send(
                     dailyWordText +
+                    dailyJokeText +
                     'No quotes found yet for the daily quote.'
                 );
-                return;
             }
 
             await generalChannel.send({
                 content:
                     dailyWordText +
+                    dailyJokeText +
                     `☀️ **Daily Quote**\n${formatQuote(row)}`
             });
 
             await markQuoteUsedInDailyCycle(row.id);
             rememberLastQuote(row);
 
-            console.log(`Daily word and quote posted successfully. Marked quote #${row.id} as used.`);
+            console.log(`Daily word, joke and quote posted successfully. Marked quote #${row.id} as used.`);
         } catch (err) {
             console.error('Failed to post daily word/quote:', err);
         }
@@ -567,7 +617,7 @@ client.once(Events.ClientReady, async () => {
                 console.log(
                     `Hourly quote skipped. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
                 );
-                currentHourlyChance += 0.1; // increments odds by 0.1 for each miss until it is hit
+                currentHourlyChance += 0.25; // increments odds by 0.25 for each miss until it is hit
                 return;
             }
 
@@ -1141,6 +1191,23 @@ client.on(Events.InteractionCreate, async interaction => {
                 content: `Deleted quote **#${id}**.`,
                 ephemeral: true
             });
+        }
+
+        else if (commandName === 'joke') {
+            try {
+                const joke = await getRandomJoke('Any');
+
+                await interaction.reply({
+                    content: `**Random Joke**\n${joke}`
+                });
+            } catch (err) {
+                console.error('joke command failed:', err);
+
+                await interaction.reply({
+                    content: 'Could not fetch a joke right now.',
+                    ephemeral: true
+                });
+            }
         }
 
         else if (commandName === 'annoydaniel') {

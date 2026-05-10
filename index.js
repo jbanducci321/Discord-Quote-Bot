@@ -90,11 +90,9 @@ function formatQuoteInline(row) {
 }
 
 async function getRandomJoke(category = 'Any') {
-    const url = `https://v2.jokeapi.dev/joke/${category}`;
-
-    //use these if jokes are too explicit
-        // `https://v2.jokeapi.dev/joke/${category}` +
-        // `?blacklistFlags=nsfw,religious,political,racist,sexist,explicit`;
+    const url =
+        `https://v2.jokeapi.dev/joke/${category}` +
+        `?safe-mode&blacklistFlags=nsfw,religious,political,racist,sexist,explicit`;
 
     const res = await fetch(url);
 
@@ -871,6 +869,80 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
+        else if (commandName === 'deletebotmessage') {
+            try {
+                const botChannel = await client.channels.fetch(BOT_CHANNEL_ID);
+
+                if (!botChannel || botChannel.type !== ChannelType.GuildText) {
+                    await interaction.reply({
+                        content: 'Bot channel not found.',
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                await interaction.deferReply({ ephemeral: true });
+
+                let deletedCount = 0;
+
+                while (true) {
+                    const messages = await botChannel.messages.fetch({ limit: 100 });
+
+                    // Only bot messages
+                    const botMessages = messages.filter(msg =>
+                        msg.author.id === client.user.id
+                    );
+
+                    if (botMessages.size === 0) break;
+
+                    const recentMessages = botMessages.filter(msg =>
+                        Date.now() - msg.createdTimestamp < 14 * 24 * 60 * 60 * 1000
+                    );
+
+                    const oldMessages = botMessages.filter(msg =>
+                        Date.now() - msg.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
+                    );
+
+                    // Bulk delete recent messages
+                    if (recentMessages.size > 0) {
+                        const deleted = await botChannel.bulkDelete(recentMessages, true);
+                        deletedCount += deleted.size;
+                    }
+
+                    // Delete old messages one by one
+                    for (const msg of oldMessages.values()) {
+                        try {
+                            await msg.delete();
+                            deletedCount++;
+                        } catch (err) {
+                            console.error('Failed to delete old message:', err);
+                        }
+                    }
+
+                    // If less than 100 messages fetched, we reached the end
+                    if (messages.size < 100) break;
+                }
+
+                await interaction.editReply({
+                    content: `🧹 Deleted ${deletedCount} bot messages in the bot channel.`
+                });
+
+            } catch (err) {
+                console.error('deletebotmessage failed:', err);
+
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({
+                        content: 'Failed to clean bot messages.'
+                    });
+                } else {
+                    await interaction.reply({
+                        content: 'Failed to clean bot messages.',
+                        ephemeral: true
+                    });
+                }
+            }
+        }
+
         else if (commandName === 'randomquote') {
             const row = await getRandomQuote(lastPostedQuoteId);
 
@@ -1196,9 +1268,15 @@ client.on(Events.InteractionCreate, async interaction => {
         else if (commandName === 'joke') {
             try {
                 const joke = await getRandomJoke('Any');
+                const generalChannel = await fetchGeneralChannel();
+
+                await generalChannel.send({
+                    content: `**Random Joke**\n${joke}`
+                });
 
                 await interaction.reply({
-                    content: `**Random Joke**\n${joke}`
+                    content: `Posted a random joke in <#${GENERAL_CHANNEL_ID}>.`,
+                    ephemeral: true
                 });
             } catch (err) {
                 console.error('joke command failed:', err);

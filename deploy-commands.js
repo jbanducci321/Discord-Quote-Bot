@@ -141,6 +141,10 @@ const commands = [
     new SlashCommandBuilder()
         .setName('joke')
         .setDescription('Post a random joke'),
+
+    new SlashCommandBuilder()
+        .setName('deletebotmessage')
+        .setDescription('Delete the bot’s messages in bot channel'),
     
     new SlashCommandBuilder()
         .setName('quotebyid')

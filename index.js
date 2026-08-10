@@ -543,6 +543,7 @@ client.once(Events.ClientReady, async () => {
                     dailyJokeText +
                     'No quotes found yet for the daily quote.'
                 );
+                return;
             }
 
             await generalChannel.send({

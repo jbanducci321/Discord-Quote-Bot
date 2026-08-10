@@ -91,8 +91,9 @@ function formatQuoteInline(row) {
 
 async function getRandomJoke(category = 'Any') {
     const url =
-        `https://v2.jokeapi.dev/joke/${category}` +
-        `?safe-mode&blacklistFlags=nsfw,religious,political,racist,sexist,explicit`;
+        `https://v2.jokeapi.dev/joke/${category}`;
+  // +
+  //       `?safe-mode&blacklistFlags=nsfw,religious,political,racist,sexist,explicit`;
 
     const res = await fetch(url);
 
@@ -606,46 +607,46 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
-    // Code for the random hourly quote logic
-    cron.schedule(HOURLY_CHANCE_CRON, async () => {
-        try {
-            const roll = Math.random() * 100;
+    // // Code for the random hourly quote logic
+    // cron.schedule(HOURLY_CHANCE_CRON, async () => {
+    //     try {
+    //         const roll = Math.random() * 100;
 
-            if (roll >= currentHourlyChance) {
-                console.log(
-                    `Hourly quote skipped. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
-                );
-                currentHourlyChance += 0.25; // increments odds by 0.25 for each miss until it is hit
-                return;
-            }
+    //         if (roll >= currentHourlyChance) {
+    //             console.log(
+    //                 `Hourly quote skipped. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
+    //             );
+    //             currentHourlyChance += 0.25; // increments odds by 0.25 for each miss until it is hit
+    //             return;
+    //         }
 
-            const generalChannel = await fetchGeneralChannel();
-            const row = await getRandomQuote(lastPostedQuoteId);
+    //         const generalChannel = await fetchGeneralChannel();
+    //         const row = await getRandomQuote(lastPostedQuoteId);
 
-            if (!row) {
-                console.log('No quotes found for hourly random chance post.');
-                currentHourlyChance = BASE_HOURLY_CHANCE;
-                return;
-            }
+    //         if (!row) {
+    //             console.log('No quotes found for hourly random chance post.');
+    //             currentHourlyChance = BASE_HOURLY_CHANCE;
+    //             return;
+    //         }
 
-            await generalChannel.send({
-                content: `@everyone Random hourly quote hit at ${currentHourlyChance}% odds:\n${formatQuote(row)}`,
-                allowedMentions: { parse: ['everyone'] }
-            });
+    //         await generalChannel.send({
+    //             content: `@everyone Random hourly quote hit at ${currentHourlyChance}% odds:\n${formatQuote(row)}`,
+    //             allowedMentions: { parse: ['everyone'] }
+    //         });
 
-            rememberLastQuote(row);
+    //         rememberLastQuote(row);
 
-            console.log(
-                `Hourly quote posted. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
-            );
+    //         console.log(
+    //             `Hourly quote posted. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
+    //         );
 
-            currentHourlyChance = BASE_HOURLY_CHANCE;
-        } catch (err) {
-            console.error('Failed hourly random quote check:', err);
-        }
-    }, {
-        timezone: APP_TIMEZONE
-    });
+    //         currentHourlyChance = BASE_HOURLY_CHANCE;
+    //     } catch (err) {
+    //         console.error('Failed hourly random quote check:', err);
+    //     }
+    // }, {
+    //     timezone: APP_TIMEZONE
+    // });
 
     // // ============================================================
     // // 67 FEATURE

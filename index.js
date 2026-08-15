@@ -3,7 +3,11 @@ import {
     Client,
     GatewayIntentBits,
     Events,
-    ChannelType
+    ChannelType,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ComponentType
 } from 'discord.js';
 import fetch from 'node-fetch';
 import cron from 'node-cron';
@@ -25,6 +29,12 @@ const REMINDER_POLL_CRON = '* * * * *';
 
 // Track reminder DM loops in memory so we do not start duplicates
 const activeReminderLoops = new Map();
+
+// Track in-progress solo blackjack games in memory, keyed by user ID
+const activeBlackjackGames = new Map();
+
+// Blackjack hit draws are rigged against this one user only — everyone else plays fair odds
+const RIG_BUST_CHANCE = 0.8;
 
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
 
@@ -456,6 +466,141 @@ async function markQuoteUsedInDailyCycle(id) {
 function isMayFirstInLosAngeles() {
     const now = getLosAngelesNowParts();
     return now.month === 5 && now.day === 1;
+}
+
+// =========================
+// BLACKJACK
+// =========================
+
+const CARD_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const CARD_SUITS = ['♠', '♥', '♦', '♣'];
+
+function buildShuffledDeck() {
+    const deck = [];
+
+    for (const suit of CARD_SUITS) {
+        for (const rank of CARD_RANKS) {
+            deck.push({ rank, suit });
+        }
+    }
+
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+
+    return deck;
+}
+
+function cardValue(card) {
+    if (card.rank === 'A') return 11;
+    if (card.rank === 'J' || card.rank === 'Q' || card.rank === 'K') return 10;
+    return Number(card.rank);
+}
+
+function handValue(cards) {
+    let total = cards.reduce((sum, card) => sum + cardValue(card), 0);
+    let aces = cards.filter(card => card.rank === 'A').length;
+
+    while (total > 21 && aces > 0) {
+        total -= 10;
+        aces--;
+    }
+
+    return total;
+}
+
+function formatCard(card) {
+    return `${card.rank}${card.suit}`;
+}
+
+function formatHand(cards, { hideFirst = false } = {}) {
+    return cards
+        .map((card, i) => (hideFirst && i === 0) ? '🂠' : formatCard(card))
+        .join('  ');
+}
+
+// Dealer draws are always fair. Only a hit for the rigged user can pull from here.
+function drawFairCard(deck) {
+    return deck.pop();
+}
+
+// The one rigged spot in the whole game: when the rigged user hits at 12+, heavily
+// favor a card that busts them instead of dealing straight off the top of the deck.
+function drawCardForHit(deck, currentHand, isRigged) {
+    const currentTotal = handValue(currentHand);
+
+    if (isRigged && currentTotal >= 12 && Math.random() < RIG_BUST_CHANCE) {
+        const bustIndex = deck.findIndex(card => handValue([...currentHand, card]) > 21);
+
+        if (bustIndex !== -1) {
+            return deck.splice(bustIndex, 1)[0];
+        }
+    }
+
+    return drawFairCard(deck);
+}
+
+function renderBlackjackTable(game, { revealDealer }) {
+    const dealerTotal = revealDealer ? `${handValue(game.dealerHand)}` : '?';
+    const playerTotal = handValue(game.playerHand);
+
+    return (
+        `**Dealer**: ${formatHand(game.dealerHand, { hideFirst: !revealDealer })}  (${dealerTotal})\n` +
+        `**You**: ${formatHand(game.playerHand)}  (${playerTotal})`
+    );
+}
+
+function buildBlackjackButtons() {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('bj_hit').setLabel('Hit').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('bj_stand').setLabel('Stand').setStyle(ButtonStyle.Secondary)
+    );
+}
+
+function resolveBlackjackOutcome(playerHand, dealerHand) {
+    const playerTotal = handValue(playerHand);
+    const dealerTotal = handValue(dealerHand);
+
+    const playerBlackjack = playerTotal === 21 && playerHand.length === 2;
+    const dealerBlackjack = dealerTotal === 21 && dealerHand.length === 2;
+
+    if (dealerTotal > 21) return { message: '🎉 **Dealer busts! You win.**', result: 'win' };
+    if (playerBlackjack && dealerBlackjack) return { message: "🤝 **Both blackjack — push.**", result: 'push' };
+    if (playerBlackjack) return { message: '🎉 **Blackjack! You win.**', result: 'win' };
+    if (dealerBlackjack) return { message: '😬 **Dealer has blackjack. You lose.**', result: 'lose' };
+    if (playerTotal > dealerTotal) return { message: '🎉 **You win!**', result: 'win' };
+    if (playerTotal < dealerTotal) return { message: '😬 **You lose.**', result: 'lose' };
+    return { message: "🤝 **Push — it's a tie.**", result: 'push' };
+}
+
+// DM only fires for the one user the game is rigged against, and only on a loss
+async function getInsult(who) {
+    const res = await fetch(`https://insult.mattbas.org/api/en/insult.json?who=${encodeURIComponent(who)}`);
+
+    if (!res.ok) {
+        throw new Error(`Insult API error: ${res.status}`);
+    }
+
+    const data = await res.json();
+    return data.insult;
+}
+
+async function sendBlackjackLossTaunt(user) {
+    let taunt;
+
+    try {
+        taunt = await getInsult('Daniel');
+    } catch (err) {
+        console.error('Failed to fetch insult, falling back to default taunt:', err);
+        taunt = 'You lost. You suck.';
+    }
+
+    try {
+        await user.send(taunt);
+    } catch (err) {
+        console.error('Failed to send blackjack loss DM:', err);
+    }
 }
 
 client.once(Events.ClientReady, async () => {
@@ -1526,6 +1671,104 @@ client.on(Events.InteractionCreate, async interaction => {
                     ephemeral: true
                 });
             }
+        }
+
+        else if (commandName === 'bjsolo') {
+            if (activeBlackjackGames.has(interaction.user.id)) {
+                await interaction.reply({
+                    content: 'You already have a blackjack game in progress. Finish that one first.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const deck = buildShuffledDeck();
+            const isRigged = interaction.user.id === DANIEL_USER_ID;
+
+            const game = {
+                deck,
+                playerHand: [deck.pop(), deck.pop()],
+                dealerHand: [deck.pop(), deck.pop()],
+                isRigged
+            };
+
+            activeBlackjackGames.set(interaction.user.id, game);
+
+            await interaction.reply({
+                content: renderBlackjackTable(game, { revealDealer: false }),
+                components: [buildBlackjackButtons()],
+                ephemeral: true
+            });
+
+            const reply = await interaction.fetchReply();
+
+            const collector = reply.createMessageComponentCollector({
+                componentType: ComponentType.Button,
+                time: 120000
+            });
+
+            collector.on('collect', async buttonInteraction => {
+                if (buttonInteraction.customId === 'bj_hit') {
+                    game.playerHand.push(
+                        drawCardForHit(game.deck, game.playerHand, game.isRigged)
+                    );
+
+                    if (handValue(game.playerHand) > 21) {
+                        activeBlackjackGames.delete(interaction.user.id);
+                        collector.stop();
+
+                        await buttonInteraction.update({
+                            content:
+                                renderBlackjackTable(game, { revealDealer: true }) +
+                                '\n\n💥 **Bust! You lose.**',
+                            components: []
+                        });
+
+                        if (game.isRigged) {
+                            await sendBlackjackLossTaunt(interaction.user);
+                        }
+                        return;
+                    }
+
+                    await buttonInteraction.update({
+                        content: renderBlackjackTable(game, { revealDealer: false }),
+                        components: [buildBlackjackButtons()]
+                    });
+                    return;
+                }
+
+                // bj_stand
+                while (handValue(game.dealerHand) < 17) {
+                    game.dealerHand.push(drawFairCard(game.deck));
+                }
+
+                const outcome = resolveBlackjackOutcome(game.playerHand, game.dealerHand);
+
+                activeBlackjackGames.delete(interaction.user.id);
+                collector.stop();
+
+                await buttonInteraction.update({
+                    content: renderBlackjackTable(game, { revealDealer: true }) + `\n\n${outcome.message}`,
+                    components: []
+                });
+
+                if (game.isRigged && outcome.result === 'lose') {
+                    await sendBlackjackLossTaunt(interaction.user);
+                }
+            });
+
+            collector.on('end', async (_collected, reason) => {
+                if (reason !== 'time') return;
+
+                activeBlackjackGames.delete(interaction.user.id);
+
+                await reply.edit({
+                    content:
+                        renderBlackjackTable(game, { revealDealer: true }) +
+                        '\n\n⏰ **Game timed out.**',
+                    components: []
+                }).catch(() => {});
+            });
         }
 
     } catch (err) {

@@ -154,6 +154,10 @@ const commands = [
                 .setDescription('Quote ID')
                 .setRequired(true)),
 
+    new SlashCommandBuilder()
+        .setName('bjsolo')
+        .setDescription('Play a solo game of blackjack against the bot'),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

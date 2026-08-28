@@ -57,6 +57,20 @@ const MAY_FIRST_OVERRIDE_QUOTE_ID = 16; // Shannyn's favorite quote
 
 const DANIEL_USER_ID = "135491462849757185";
 
+const MY_FRIEND_NEIL = "246897018579058688" 
+
+//Every Tuesday, Thursday at 3:30 PM LA time
+const NEIL_LOGIC_CRON = '30 15 * * 2,4'
+
+//Every Tuesday, Thursday at 1:30 PM LA time
+const NEIL_DATA_SCIENCE_CRON = '30 13 * * 2,4'
+
+//Every Wednesday, Friday at 11:30 AM LA time
+const NEIL_CAPSTONE_CRON = '30 11 * * 3,5'
+
+//Every Friday at 9:30 AM LA time (this is the important one, apparently)
+const NEIL_SERVICE_LEARNING_CRON = '30 9 * * 5'
+
 // Hourly chance system
 const BASE_HOURLY_CHANCE = 1;
 let currentHourlyChance = BASE_HOURLY_CHANCE; // starts the currently hourly chance at a base 5%
@@ -603,6 +617,24 @@ async function sendBlackjackLossTaunt(user) {
     }
 }
 
+async function sendNeilReminder(message, cronName) {
+
+    try {
+        if (!MY_FRIEND_NEIL) {
+            throw new Error('MY_FRIEND_NEIL is missing from environment variables');
+        }
+
+        const neilUser = await client.users.fetch(MY_FRIEND_NEIL);
+
+        await neilUser.send({
+            content: message
+        })
+    } catch (err) {
+        console.error(`${cronName} failed:`, err);
+    }
+
+}
+
 client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
@@ -910,10 +942,35 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
+    cron.schedule(NEIL_LOGIC_CRON, async () => sendNeilReminder(
+        `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST329 - Reasoning with Logic in 30 minutes, at 4:00 PM in BIT222.\n`
+    ), {
+        timezone: APP_TIMEZONE
+    });
+
+    cron.schedule(NEIL_DATA_SCIENCE_CRON, async () => sendNeilReminder(
+        `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST383 - Introduction to Data Science in 30 minutes, at 2:00 PM in BIT110.\n`
+    ), {
+        timezone: APP_TIMEZONE
+    });
+
+    cron.schedule(NEIL_CAPSTONE_CRON, async () => sendNeilReminder(
+        `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST499 - Computer Science Capstone in 30 minutes, at 12:00 PM in BIT110.\n`
+    ), {
+        timezone: APP_TIMEZONE
+    });
+
+    cron.schedule(NEIL_SERVICE_LEARNING_CRON, async () => sendNeilReminder(
+        `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST462S - Race, Gender, Class in the Digital World in 30 minutes, at 10:00 AM in BIT224.\n`
+    ), {
+        timezone: APP_TIMEZONE
+    });
+
     console.log(`Daily quote scheduler started (${APP_TIMEZONE}).`);
     console.log(`Hourly 5% quote scheduler started (${APP_TIMEZONE}).`);
     console.log(`67 scheduler started (${APP_TIMEZONE}).`);
     console.log(`Birthday scheduler started (${APP_TIMEZONE}).`);
+    console.log(`My friend Neil\'s class reminders started (${APP_TIMEZONE}).`);
 });
 
 client.on(Events.InteractionCreate, async interaction => {

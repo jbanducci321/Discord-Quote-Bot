@@ -71,6 +71,19 @@ const NEIL_CAPSTONE_CRON = '30 11 * * 3,5'
 //Every Friday at 9:30 AM LA time (this is the important one, apparently)
 const NEIL_SERVICE_LEARNING_CRON = '30 9 * * 5'
 
+// Same classes as above, but firing 10 minutes before instead of 30 — used for the general channel ping
+//Every Tuesday, Thursday at 3:50 PM LA time
+const NEIL_LOGIC_PING_CRON = '50 15 * * 2,4'
+
+//Every Tuesday, Thursday at 1:50 PM LA time
+const NEIL_DATA_SCIENCE_PING_CRON = '50 13 * * 2,4'
+
+//Every Wednesday, Friday at 11:50 AM LA time
+const NEIL_CAPSTONE_PING_CRON = '50 11 * * 3,5'
+
+//Every Friday at 9:50 AM LA time
+const NEIL_SERVICE_LEARNING_PING_CRON = '50 9 * * 5'
+
 // Hourly chance system
 const BASE_HOURLY_CHANCE = 1;
 let currentHourlyChance = BASE_HOURLY_CHANCE; // starts the currently hourly chance at a base 5%
@@ -635,6 +648,22 @@ async function sendNeilReminder(message, cronName) {
 
 }
 
+async function pingNeilInGeneral(message, cronName) {
+    try {
+        if (!MY_FRIEND_NEIL) {
+            throw new Error('MY_FRIEND_NEIL is missing from environment variables');
+        }
+
+        const generalChannel = await fetchGeneralChannel();
+
+        await generalChannel.send({
+            content: `<@${MY_FRIEND_NEIL}> ${message}`
+        })
+    } catch (err) {
+        console.error(`${cronName} failed:`, err);
+    }
+}
+
 client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
@@ -966,11 +995,41 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
+    // General channel pings, 10 minutes before each class
+    cron.schedule(NEIL_LOGIC_PING_CRON, () => pingNeilInGeneral(
+        'you have CST329 - Reasoning with Logic in 10 minutes, at 4:00 PM in BIT222!',
+        'NEIL_LOGIC_PING_CRON'
+    ), {
+        timezone: APP_TIMEZONE
+    });
+
+    cron.schedule(NEIL_DATA_SCIENCE_PING_CRON, () => pingNeilInGeneral(
+        'you have CST383 - Introduction to Data Science in 10 minutes, at 2:00 PM in BIT110!',
+        'NEIL_DATA_SCIENCE_PING_CRON'
+    ), {
+        timezone: APP_TIMEZONE
+    });
+
+    cron.schedule(NEIL_CAPSTONE_PING_CRON, () => pingNeilInGeneral(
+        'you have CST499 - Computer Science Capstone in 10 minutes, at 12:00 PM in BIT110!',
+        'NEIL_CAPSTONE_PING_CRON'
+    ), {
+        timezone: APP_TIMEZONE
+    });
+
+    cron.schedule(NEIL_SERVICE_LEARNING_PING_CRON, () => pingNeilInGeneral(
+        'you have CST462S - Race, Gender, Class in the Digital World in 10 minutes, at 10:00 AM in BIT224!',
+        'NEIL_SERVICE_LEARNING_PING_CRON'
+    ), {
+        timezone: APP_TIMEZONE
+    });
+
     console.log(`Daily quote scheduler started (${APP_TIMEZONE}).`);
     console.log(`Hourly 5% quote scheduler started (${APP_TIMEZONE}).`);
     console.log(`67 scheduler started (${APP_TIMEZONE}).`);
     console.log(`Birthday scheduler started (${APP_TIMEZONE}).`);
     console.log(`My friend Neil\'s class reminders started (${APP_TIMEZONE}).`);
+    console.log(`My friend Neil's general channel pings started (${APP_TIMEZONE}).`);
 });
 
 client.on(Events.InteractionCreate, async interaction => {

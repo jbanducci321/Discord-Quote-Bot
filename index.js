@@ -1923,6 +1923,7 @@ client.on(Events.MessageCreate, async message => {
         if (message.mentions.everyone) {
             await message.react('1499476464683323463'); // Reacts with specified emote when @everyone used
             await message.react('1499892336161718430');
+            await message.react('1545294906493247579');
         }
 
         // =========================================

@@ -1025,8 +1025,6 @@ client.once(Events.ClientReady, async () => {
     });
 
     console.log(`Daily quote scheduler started (${APP_TIMEZONE}).`);
-    console.log(`Hourly 5% quote scheduler started (${APP_TIMEZONE}).`);
-    console.log(`67 scheduler started (${APP_TIMEZONE}).`);
     console.log(`Birthday scheduler started (${APP_TIMEZONE}).`);
     console.log(`My friend Neil\'s class reminders started (${APP_TIMEZONE}).`);
     console.log(`My friend Neil's general channel pings started (${APP_TIMEZONE}).`);

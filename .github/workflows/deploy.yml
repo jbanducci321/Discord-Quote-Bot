@@ -1,0 +1,51 @@
+name: Deploy to PebbleHost
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-pebblehost
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Only ships the files the bot actually needs to run. node_modules is
+      # rebuilt on the server automatically (PebbleHost's loader runs `npm
+      # install` on every restart), and .env must never leave the server.
+      - name: Assemble deploy bundle
+        run: |
+          mkdir -p deploy_bundle
+          cp index.js deploy-commands.js db.js package.json package-lock.json deploy_bundle/
+
+      # sftp_only is required here: PebbleHost only exposes a restricted SFTP
+      # daemon (no shell/exec access), and this action's default exclude
+      # support relies on rsync, which needs to run a remote command over SSH.
+      - name: Upload bundle via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
+        with:
+          username: ${{ secrets.PEBBLEHOST_SFTP_USERNAME }}
+          password: ${{ secrets.PEBBLEHOST_SFTP_PASSWORD }}
+          server: ${{ secrets.PEBBLEHOST_SFTP_HOST }}
+          port: ${{ secrets.PEBBLEHOST_SFTP_PORT }}
+          sftp_only: true
+          local_path: './deploy_bundle/*'
+          remote_path: '/home/container'
+          delete_remote_files: false
+
+      # Restarting reruns PebbleHost's loader, which does `npm install` then
+      # `npm start` (deploy-commands.js followed by index.js) with the new files.
+      - name: Restart bot on PebbleHost
+        run: |
+          curl -sS --fail -w '\nHTTP %{http_code}\n' -X POST \
+            "https://panel.pebblehost.com/api/client/servers/${{ secrets.PEBBLEHOST_SERVER_ID }}/power" \
+            -H "Authorization: Bearer ${{ secrets.PEBBLEHOST_API_KEY }}" \
+            -H "Accept: application/vnd.pterodactyl.v1+json" \
+            -H "Content-Type: application/json" \
+            -d '{"signal":"restart"}'

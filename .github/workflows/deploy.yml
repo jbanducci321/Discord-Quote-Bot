@@ -36,7 +36,7 @@ jobs:
           port: ${{ secrets.PEBBLEHOST_SFTP_PORT }}
           sftp_only: true
           local_path: './deploy_bundle/*'
-          remote_path: '/home/container'
+          remote_path: '/'
           delete_remote_files: false
 
       # Restarting reruns PebbleHost's loader, which does `npm install` then

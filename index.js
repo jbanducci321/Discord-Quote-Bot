@@ -36,6 +36,9 @@ const activeBlackjackGames = new Map();
 // Blackjack hit draws are rigged against this one user only — everyone else plays fair odds
 const RIG_BUST_CHANCE = 0.8;
 
+// Chance (0-1) that the daily word is a Shannafied word instead of the real Wordnik word of the day
+const SHANWORD_CHANCE = 0.5;
+
 
 // Daily at 8:00 AM LA time
 const DAILY_CRON = '0 8 * * *';
@@ -449,10 +452,75 @@ async function markQuoteUsedInDailyCycle(id) {
     );
 }
 
+// Sets all Shanwords to not used to restart their cycle
+async function resetShanwordCycle() {
+    await pool.query(`
+        UPDATE quote_bot_shanwords
+        SET used_in_daily_cycle = 0
+    `);
+}
+
+// Gets a Shanword for the daily word, makes sure it hasn't been used in the current cycle
+async function getNextCycleShanword() {
+    let [rows] = await pool.query(`
+        SELECT id, word, definition
+        FROM quote_bot_shanwords
+        WHERE used_in_daily_cycle = 0
+        ORDER BY RAND()
+        LIMIT 1
+    `);
+
+    if (rows.length === 0) { // If no more Shanwords are available, restarts the cycle and tries again
+        await resetShanwordCycle();
+
+        [rows] = await pool.query(`
+            SELECT id, word, definition
+            FROM quote_bot_shanwords
+            WHERE used_in_daily_cycle = 0
+            ORDER BY RAND()
+            LIMIT 1
+        `);
+    }
+
+    return rows[0] ?? null;
+}
+
+// After a Shanword has been used its boolean value is changed to true
+async function markShanwordUsedInCycle(id) {
+    await pool.query(
+        `
+        UPDATE quote_bot_shanwords
+        SET used_in_daily_cycle = 1
+        WHERE id = ?
+        `,
+        [id]
+    );
+}
+
+async function getShanwordById(id) {
+    const [rows] = await pool.query(
+        `
+        SELECT id, word, definition
+        FROM quote_bot_shanwords
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [id]
+    );
+
+    return rows[0] ?? null;
+}
+
 // For a 'special' birthday surprise
 function isMayFirstInLosAngeles() {
     const now = getLosAngelesNowParts();
     return now.month === 5 && now.day === 1;
+}
+
+// One-time bypass: 9/6/2026 only, not a recurring yearly date like isMayFirstInLosAngeles
+function isShantagonizeBypassDayInLosAngeles() {
+    const now = getLosAngelesNowParts();
+    return now.year === 2026 && now.month === 9 && now.day === 6;
 }
 
 // =========================
@@ -671,19 +739,52 @@ client.once(Events.ClientReady, async () => {
             // =========================
             let dailyWordText = '';
 
-            try {
-                const wordEntry = await getDailyWord();
+            // 9/6/2026 one-time bypass: force Shantagonize (#12), no cycle effect, same as the May 1 quote override
+            if (isShantagonizeBypassDayInLosAngeles()) {
+                const shantagonize = await getShanwordById(12);
 
-                dailyWordText =
-                    `📚 **Daily Word**\n` +
-                    `**${wordEntry.word}** *(${wordEntry.partOfSpeech})*\n` +
-                    `${wordEntry.definition}\n\n`;
-            } catch (err) {
-                console.error('Failed to fetch daily word:', err);
+                dailyWordText = shantagonize
+                    ? `📚 **Daily Word**\n` +
+                      `**${shantagonize.word}**\n` +
+                      `${shantagonize.definition}\n\n`
+                    : `📚 **Daily Word**\n` +
+                      `Daily word unavailable today.\n\n`;
+            } else if (Math.random() < SHANWORD_CHANCE) {
+                try {
+                    const shanword = await getNextCycleShanword();
 
-                dailyWordText =
-                    `📚 **Daily Word**\n` +
-                    `Daily word unavailable today.\n\n`;
+                    if (!shanword) {
+                        throw new Error('No Shanwords found in quote_bot_shanwords.');
+                    }
+
+                    dailyWordText =
+                        `📚 **Daily Word**\n` +
+                        `**${shanword.word}**\n` +
+                        `${shanword.definition}\n\n`;
+
+                    await markShanwordUsedInCycle(shanword.id);
+                } catch (err) {
+                    console.error('Failed to fetch Shanword:', err);
+
+                    dailyWordText =
+                        `📚 **Daily Word**\n` +
+                        `Daily word unavailable today.\n\n`;
+                }
+            } else {
+                try {
+                    const wordEntry = await getDailyWord();
+
+                    dailyWordText =
+                        `📚 **Daily Word**\n` +
+                        `**${wordEntry.word}** *(${wordEntry.partOfSpeech})*\n` +
+                        `${wordEntry.definition}\n\n`;
+                } catch (err) {
+                    console.error('Failed to fetch daily word:', err);
+
+                    dailyWordText =
+                        `📚 **Daily Word**\n` +
+                        `Daily word unavailable today.\n\n`;
+                }
             }
 
             // May 1 override: post quote #16 and do NOT affect cycle state
@@ -1052,6 +1153,55 @@ client.on(Events.InteractionCreate, async interaction => {
                 content:
                     `Quote added with ID **${result.insertId}**.\n` +
                     `**${person}**:\n"${quote}"`,
+                ephemeral: true
+            });
+        }
+
+        else if (commandName === 'addshanword') {
+            const word = interaction.options.getString('word').trim();
+            const definition = interaction.options.getString('definition').trim();
+
+            const [duplicateRows] = await pool.query(
+                `
+                SELECT id, word, definition
+                FROM quote_bot_shanwords
+                WHERE LOWER(TRIM(word)) = LOWER(TRIM(?))
+                LIMIT 1
+                `,
+                [word]
+            );
+
+            if (duplicateRows.length > 0) {
+                const existing = duplicateRows[0];
+
+                await interaction.reply({
+                    content:
+                        `That word already exists as **#${existing.id}**.\n` +
+                        `**${existing.word}**: ${existing.definition}`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const sql = `
+                INSERT INTO quote_bot_shanwords
+                (word, definition, added_by_user_id, added_by_username, used_in_daily_cycle)
+                VALUES (?, ?, ?, ?, 0)
+            `;
+
+            const sqlParams = [
+                word,
+                definition,
+                interaction.user.id,
+                interaction.user.username
+            ];
+
+            const [result] = await pool.query(sql, sqlParams);
+
+            await interaction.reply({
+                content:
+                    `Shanword added with ID **${result.insertId}**.\n` +
+                    `**${word}**: ${definition}`,
                 ephemeral: true
             });
         }
@@ -1462,6 +1612,46 @@ client.on(Events.InteractionCreate, async interaction => {
                 content:
                     `Quote **#${id}** updated.\n` +
                     `**${updatedPerson}**:\n"${updatedQuote}"`,
+                ephemeral: true
+            });
+        }
+
+        else if (commandName === 'editshanword') {
+            const id = interaction.options.getInteger('id');
+            const newWord = interaction.options.getString('word');
+            const newDefinition = interaction.options.getString('definition');
+
+            const [existingRows] = await pool.query(
+                'SELECT * FROM quote_bot_shanwords WHERE id = ?',
+                [id]
+            );
+
+            if (existingRows.length === 0) {
+                await interaction.reply({
+                    content: `Shanword ID **${id}** was not found.`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const existing = existingRows[0];
+
+            const updatedWord = newWord ?? existing.word;
+            const updatedDefinition = newDefinition ?? existing.definition;
+
+            await pool.query(
+                `
+                UPDATE quote_bot_shanwords
+                SET word = ?, definition = ?
+                WHERE id = ?
+                `,
+                [updatedWord, updatedDefinition, id]
+            );
+
+            await interaction.reply({
+                content:
+                    `Shanword **#${id}** updated.\n` +
+                    `**${updatedWord}**: ${updatedDefinition}`,
                 ephemeral: true
             });
         }

@@ -15,6 +15,18 @@ const commands = [
                 .setRequired(true)),
 
     new SlashCommandBuilder()
+        .setName('addshanword')
+        .setDescription('Add a new Shannafied word')
+        .addStringOption(option =>
+            option.setName('word')
+                .setDescription('The Shannafied word')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('definition')
+                .setDescription('The definition, mentioning Shannyn')
+                .setRequired(true)),
+
+    new SlashCommandBuilder()
         .setName('randomquote')
         .setDescription('Post a random quote in the general channel'),
 
@@ -72,6 +84,22 @@ const commands = [
         .addStringOption(option =>
             option.setName('person')
                 .setDescription('New person name')
+                .setRequired(false)),
+
+    new SlashCommandBuilder()
+        .setName('editshanword')
+        .setDescription('Edit an existing Shannafied word')
+        .addIntegerOption(option =>
+            option.setName('id')
+                .setDescription('Shanword ID')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('word')
+                .setDescription('New word')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('definition')
+                .setDescription('New definition')
                 .setRequired(false)),
 
     new SlashCommandBuilder()

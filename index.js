@@ -1535,17 +1535,28 @@ client.on(Events.InteractionCreate, async interaction => {
             try {
                 const user = await client.users.fetch(DANIEL_USER_ID);
 
-                const candidateIds = serverMemberIds.filter(id => id !== DANIEL_USER_ID);
+                const candidateIds = serverMemberIds.filter(
+                    id => id !== DANIEL_USER_ID && id !== client.user.id
+                );
                 const randomSenderId = candidateIds.length > 0
                     ? candidateIds[Math.floor(Math.random() * candidateIds.length)]
                     : interaction.user.id;
 
                 const senderMention = `<@${randomSenderId}>`;
 
-                await user.send(`Fuck you -from ${senderMention}`);
+                let taunt;
+
+                try {
+                    taunt = await getInsult('Daniel');
+                } catch (err) {
+                    console.error('Failed to fetch insult, falling back to default taunt:', err);
+                    taunt = 'You suck, Daniel.';
+                }
+
+                await user.send(`${taunt} -from ${senderMention}`);
 
                 await interaction.reply({
-                    content: '✅ DM sent successfully.',
+                    content: `✅ DM sent successfully, from ${senderMention}.`,
                     ephemeral: true
                 });
 

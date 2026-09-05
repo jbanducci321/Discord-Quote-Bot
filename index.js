@@ -40,7 +40,7 @@ let neilPingsEnabled = true;
 const RIG_BUST_CHANCE = 0.8;
 
 // Chance (0-1) that the daily word is a Shannafied word instead of the real Wordnik word of the day
-const SHANWORD_CHANCE = 0.5;
+const SHANWORD_CHANCE = 0.20;
 
 
 // Daily at 8:00 AM LA time

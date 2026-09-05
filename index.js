@@ -1882,7 +1882,8 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.reply({
                 content: neilPingsEnabled
                     ? '🔔 Neil\'s class pings in this server are now **ON**.'
-                    : '🔕 Neil\'s class pings in this server are now **OFF**.'
+                    : '🔕 Neil\'s class pings in this server are now **OFF**.',
+                ephemeral: true
             });
         }
 

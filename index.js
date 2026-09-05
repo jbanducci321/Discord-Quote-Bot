@@ -608,10 +608,37 @@ async function sendNeilReminder(message, cronName) {
 
 }
 
+async function getNeilPingsEnabled() {
+    const [rows] = await pool.query(
+        `SELECT setting_value FROM quote_bot_settings WHERE setting_key = 'neil_pings_enabled'`
+    );
+
+    if (rows.length === 0) {
+        return true;
+    }
+
+    return rows[0].setting_value === '1';
+}
+
+async function setNeilPingsEnabled(enabled) {
+    await pool.query(
+        `
+        INSERT INTO quote_bot_settings (setting_key, setting_value)
+        VALUES ('neil_pings_enabled', ?)
+        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+        `,
+        [enabled ? '1' : '0']
+    );
+}
+
 async function pingNeilInGeneral(message, cronName) {
     try {
         if (!MY_FRIEND_NEIL) {
             throw new Error('MY_FRIEND_NEIL is missing from environment variables');
+        }
+
+        if (!(await getNeilPingsEnabled())) {
+            return;
         }
 
         const generalChannel = await fetchGeneralChannel();
@@ -910,29 +937,31 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
-    cron.schedule(NEIL_LOGIC_CRON, async () => sendNeilReminder(
-        `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST329 - Reasoning with Logic in 30 minutes, at 4:00 PM in BIT222.\n`
-    ), {
-        timezone: APP_TIMEZONE
-    });
+    // Disabled: Neil's class reminder DMs. Server pings below (toggleable via
+    // /myfriendneil) replace these.
+    // cron.schedule(NEIL_LOGIC_CRON, async () => sendNeilReminder(
+    //     `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST329 - Reasoning with Logic in 30 minutes, at 4:00 PM in BIT222.\n`
+    // ), {
+    //     timezone: APP_TIMEZONE
+    // });
 
-    cron.schedule(NEIL_DATA_SCIENCE_CRON, async () => sendNeilReminder(
-        `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST383 - Introduction to Data Science in 30 minutes, at 2:00 PM in BIT110.\n`
-    ), {
-        timezone: APP_TIMEZONE
-    });
+    // cron.schedule(NEIL_DATA_SCIENCE_CRON, async () => sendNeilReminder(
+    //     `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST383 - Introduction to Data Science in 30 minutes, at 2:00 PM in BIT110.\n`
+    // ), {
+    //     timezone: APP_TIMEZONE
+    // });
 
-    cron.schedule(NEIL_CAPSTONE_CRON, async () => sendNeilReminder(
-        `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST499 - Computer Science Capstone in 30 minutes, at 12:00 PM in BIT110.\n`
-    ), {
-        timezone: APP_TIMEZONE
-    });
+    // cron.schedule(NEIL_CAPSTONE_CRON, async () => sendNeilReminder(
+    //     `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST499 - Computer Science Capstone in 30 minutes, at 12:00 PM in BIT110.\n`
+    // ), {
+    //     timezone: APP_TIMEZONE
+    // });
 
-    cron.schedule(NEIL_SERVICE_LEARNING_CRON, async () => sendNeilReminder(
-        `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST462S - Race, Gender, Class in the Digital World in 30 minutes, at 10:00 AM in BIT224.\n`
-    ), {
-        timezone: APP_TIMEZONE
-    });
+    // cron.schedule(NEIL_SERVICE_LEARNING_CRON, async () => sendNeilReminder(
+    //     `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST462S - Race, Gender, Class in the Digital World in 30 minutes, at 10:00 AM in BIT224.\n`
+    // ), {
+    //     timezone: APP_TIMEZONE
+    // });
 
     // General channel pings, 10 minutes before each class
     cron.schedule(NEIL_LOGIC_PING_CRON, () => pingNeilInGeneral(
@@ -965,7 +994,7 @@ client.once(Events.ClientReady, async () => {
 
     console.log(`Daily quote scheduler started (${APP_TIMEZONE}).`);
     console.log(`Birthday scheduler started (${APP_TIMEZONE}).`);
-    console.log(`My friend Neil\'s class reminders started (${APP_TIMEZONE}).`);
+    console.log(`My friend Neil\'s class reminder DMs are disabled (${APP_TIMEZONE}).`);
     console.log(`My friend Neil's general channel pings started (${APP_TIMEZONE}).`);
 });
 
@@ -1666,6 +1695,27 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.reply({
                 content: `✅ Stopped and deleted **${stoppedCount}** active reminder(s).`,
                 ephemeral: true
+            });
+        }
+
+        else if (commandName === 'myfriendneil') {
+            if (interaction.user.id === MY_FRIEND_NEIL) {
+                await interaction.reply({
+                    content: '❌ You cannot toggle this yourself, Neil.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const currentlyEnabled = await getNeilPingsEnabled();
+            const nextEnabled = !currentlyEnabled;
+
+            await setNeilPingsEnabled(nextEnabled);
+
+            await interaction.reply({
+                content: nextEnabled
+                    ? '🔔 Neil\'s class pings in this server are now **ON**.'
+                    : '🔕 Neil\'s class pings in this server are now **OFF**.'
             });
         }
 

@@ -131,6 +131,10 @@ const commands = [
         .setDescription('Stop your currently active reminder spam'),
 
     new SlashCommandBuilder()
+        .setName('myfriendneil')
+        .setDescription('Toggle Neil\'s class reminder pings in this server on or off'),
+
+    new SlashCommandBuilder()
         .setName('playthehits')
         .setDescription('Play the hits'),
     

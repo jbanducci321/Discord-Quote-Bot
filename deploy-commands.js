@@ -95,10 +95,6 @@ const commands = [
         .setDescription('Use at your own risk'),
 
     new SlashCommandBuilder()
-        .setName('makedanielhappy')
-        .setDescription('Send Daniel a random plane pic and who sent it'),
-    
-        new SlashCommandBuilder()
         .setName('setreminder')
         .setDescription('Set a reminder that DMs you until you stop it')
         .addIntegerOption(option =>

@@ -36,8 +36,6 @@ const activeBlackjackGames = new Map();
 // Blackjack hit draws are rigged against this one user only — everyone else plays fair odds
 const RIG_BUST_CHANCE = 0.8;
 
-const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
-
 
 // Daily at 8:00 AM LA time
 const DAILY_CRON = '0 8 * * *';
@@ -172,44 +170,6 @@ function isValidMonthDay(month, day) {
     };
 
     return day >= 1 && day <= (daysInMonth[month] ?? 0);
-}
-
-async function getRandomPlanePhoto() {
-    if (!PEXELS_API_KEY) {
-        throw new Error('PEXELS_API_KEY is missing from environment variables.');
-    }
-
-    const queries = ['plane', 'airplane', 'jet', 'aircraft'];
-    const randomQuery = queries[Math.floor(Math.random() * queries.length)];
-    const randomPage = Math.floor(Math.random() * 20) + 1;
-
-    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(randomQuery)}&per_page=20&page=${randomPage}&orientation=landscape`;
-
-    const response = await fetch(url, {
-        headers: {
-            Authorization: PEXELS_API_KEY
-        }
-    });
-
-    if (!response.ok) {
-        throw new Error(`Pexels API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    const photos = data?.photos ?? [];
-
-    if (photos.length === 0) {
-        throw new Error('No plane photos returned from Pexels.');
-    }
-
-    const photo = photos[Math.floor(Math.random() * photos.length)];
-
-    return {
-        imageUrl: photo.src?.large2x || photo.src?.large || photo.src?.original,
-        photographer: photo.photographer,
-        pexelsUrl: photo.url
-    };
 }
 
 async function getRandomQuote(excludeId = null) {
@@ -699,25 +659,6 @@ client.once(Events.ClientReady, async () => {
                     `Daily word unavailable today.\n\n`;
             }
 
-            // =========================
-            // DAILY PROGRAMMING JOKE
-            // =========================
-            let dailyJokeText = '';
-
-            try {
-                const joke = await getRandomJoke('Programming');
-
-                dailyJokeText =
-                    `😂 **Daily Programming Joke**\n` +
-                    `${joke}\n\n`;
-            } catch (err) {
-                console.error('Failed to fetch daily joke:', err);
-
-                dailyJokeText =
-                    `😂 **Daily Programming Joke**\n` +
-                    `Daily joke unavailable today.\n\n`;
-            }
-
             // May 1 override: post quote #16 and do NOT affect cycle state
             if (isMayFirstInLosAngeles()) {
                 const overrideRow = await getQuoteById(MAY_FIRST_OVERRIDE_QUOTE_ID);
@@ -746,7 +687,6 @@ client.once(Events.ClientReady, async () => {
             if (!row) {
                 await generalChannel.send(
                     dailyWordText +
-                    dailyJokeText +
                     'No quotes found yet for the daily quote.'
                 );
                 return;
@@ -755,14 +695,13 @@ client.once(Events.ClientReady, async () => {
             await generalChannel.send({
                 content:
                     dailyWordText +
-                    dailyJokeText +
                     `☀️ **Daily Quote**\n${formatQuote(row)}`
             });
 
             await markQuoteUsedInDailyCycle(row.id);
             rememberLastQuote(row);
 
-            console.log(`Daily word, joke and quote posted successfully. Marked quote #${row.id} as used.`);
+            console.log(`Daily word and quote posted successfully. Marked quote #${row.id} as used.`);
         } catch (err) {
             console.error('Failed to post daily word/quote:', err);
         }
@@ -1754,37 +1693,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 content: `Posted quote **#${id}** in <#${GENERAL_CHANNEL_ID}>.`,
                 ephemeral: true
             });
-        }
-
-        else if (commandName === 'makedanielhappy') {
-            try {
-                if (!DANIEL_USER_ID) {
-                    throw new Error('DANIEL_USER_ID is missing from environment variables.');
-                }
-
-                const danielUser = await client.users.fetch(DANIEL_USER_ID);
-                const senderMention = `<@${interaction.user.id}>`;
-
-                const photo = await getRandomPlanePhoto();
-
-                await danielUser.send({
-                    content:
-                         `✈️ A [plane](${photo.imageUrl}) has arrived from ${senderMention}!\n`
-                });
-
-                await interaction.reply({
-                    content: '✅ Sent Daniel a plane pic.',
-                    ephemeral: true
-                });
-
-            } catch (err) {
-                console.error('makedanielhappy failed:', err);
-
-                await interaction.reply({
-                    content: '❌ Failed to send Daniel a plane pic. Check console.',
-                    ephemeral: true
-                });
-            }
         }
 
         else if (commandName === 'bjsolo') {

@@ -33,6 +33,9 @@ const activeReminderLoops = new Map();
 // Track in-progress solo blackjack games in memory, keyed by user ID
 const activeBlackjackGames = new Map();
 
+// Toggled in memory by /myfriendneil; resets to true on every bot restart
+let neilPingsEnabled = true;
+
 // Blackjack hit draws are rigged against this one user only — everyone else plays fair odds
 const RIG_BUST_CHANCE = 0.8;
 
@@ -676,36 +679,13 @@ async function sendNeilReminder(message, cronName) {
 
 }
 
-async function getNeilPingsEnabled() {
-    const [rows] = await pool.query(
-        `SELECT setting_value FROM quote_bot_settings WHERE setting_key = 'neil_pings_enabled'`
-    );
-
-    if (rows.length === 0) {
-        return true;
-    }
-
-    return rows[0].setting_value === '1';
-}
-
-async function setNeilPingsEnabled(enabled) {
-    await pool.query(
-        `
-        INSERT INTO quote_bot_settings (setting_key, setting_value)
-        VALUES ('neil_pings_enabled', ?)
-        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
-        `,
-        [enabled ? '1' : '0']
-    );
-}
-
 async function pingNeilInGeneral(message, cronName) {
     try {
         if (!MY_FRIEND_NEIL) {
             throw new Error('MY_FRIEND_NEIL is missing from environment variables');
         }
 
-        if (!(await getNeilPingsEnabled())) {
+        if (!neilPingsEnabled) {
             return;
         }
 
@@ -1897,13 +1877,10 @@ client.on(Events.InteractionCreate, async interaction => {
                 return;
             }
 
-            const currentlyEnabled = await getNeilPingsEnabled();
-            const nextEnabled = !currentlyEnabled;
-
-            await setNeilPingsEnabled(nextEnabled);
+            neilPingsEnabled = !neilPingsEnabled;
 
             await interaction.reply({
-                content: nextEnabled
+                content: neilPingsEnabled
                     ? '🔔 Neil\'s class pings in this server are now **ON**.'
                     : '🔕 Neil\'s class pings in this server are now **OFF**.'
             });

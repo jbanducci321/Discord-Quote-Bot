@@ -17,15 +17,21 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
     ]
 });
 
 const BOT_CHANNEL_ID = process.env.BOT_CHANNEL_ID;
 const GENERAL_CHANNEL_ID = process.env.GENERAL_CHANNEL_ID;
+const GUILD_ID = process.env.GUILD_ID;
 const APP_TIMEZONE = 'America/Los_Angeles';
 
 const REMINDER_POLL_CRON = '* * * * *';
+
+// Every server member's ID, cached in memory on startup — see the ClientReady
+// handler below. Empty until that fetch completes.
+let serverMemberIds = [];
 
 // Track reminder DM loops in memory so we do not start duplicates
 const activeReminderLoops = new Map();
@@ -46,36 +52,16 @@ const SHANWORD_CHANCE = 0.20;
 // Daily at 8:00 AM LA time
 const DAILY_CRON = '0 8 * * *';
 
-// Every hour at minute 0 LA time
-const HOURLY_CHANCE_CRON = '0 * * * *';
-
-// Every day at 6:07 PM LA time
-const SIXTY_SEVEN_CRON = '7 18 * * *';
-
 // Every day at 00:00 LA time
 const BIRTHDAY_CHECK_CRON = '0 0 * * *';
 
-// Hardcoded 67 ping target
-const SIX_SEVEN_VICTIM = process.env.SHANNYN_DISCORD_ID; // AKA Shannyn
 const MAY_FIRST_OVERRIDE_QUOTE_ID = 16; // Shannyn's favorite quote
 
 const DANIEL_USER_ID = process.env.DANIEL_DISCORD_ID;
 
 const MY_FRIEND_NEIL = process.env.NEIL_DISCORD_ID;
 
-//Every Tuesday, Thursday at 3:30 PM LA time
-const NEIL_LOGIC_CRON = '30 15 * * 2,4'
-
-//Every Tuesday, Thursday at 1:30 PM LA time
-const NEIL_DATA_SCIENCE_CRON = '30 13 * * 2,4'
-
-//Every Wednesday, Friday at 11:30 AM LA time
-const NEIL_CAPSTONE_CRON = '30 11 * * 3,5'
-
-//Every Friday at 9:30 AM LA time (this is the important one, apparently)
-const NEIL_SERVICE_LEARNING_CRON = '30 9 * * 5'
-
-// Same classes as above, but firing 10 minutes before instead of 30 — used for the general channel ping
+// Same classes Neil has, firing 10 minutes before each one — used for the general channel ping
 //Every Tuesday, Thursday at 3:50 PM LA time
 const NEIL_LOGIC_PING_CRON = '50 15 * * 2,4'
 
@@ -87,10 +73,6 @@ const NEIL_CAPSTONE_PING_CRON = '50 11 * * 3,5'
 
 //Every Friday at 9:50 AM LA time
 const NEIL_SERVICE_LEARNING_PING_CRON = '50 9 * * 5'
-
-// Hourly chance system
-const BASE_HOURLY_CHANCE = 1;
-let currentHourlyChance = BASE_HOURLY_CHANCE; // starts the currently hourly chance at a base 5%
 
 // Track last displayed quote so random posts do not repeat back-to-back
 let lastPostedQuoteId = null;
@@ -416,6 +398,8 @@ async function resetDailyQuoteCycle() {
         UPDATE quote_bot_quotes
         SET used_in_daily_cycle = 0
     `);
+
+    console.log('Quote cycle reset — all quotes marked as unused again.');
 }
 
 // Gets the quote for the daily quote, makes sure it hasn't been used in the current cycle
@@ -453,6 +437,8 @@ async function markQuoteUsedInDailyCycle(id) {
         `,
         [id]
     );
+
+    console.log(`Quote used today, marked quote (#${id}) as used.`);
 }
 
 // Sets all Shanwords to not used to restart their cycle
@@ -461,6 +447,8 @@ async function resetShanwordCycle() {
         UPDATE quote_bot_shanwords
         SET used_in_daily_cycle = 0
     `);
+
+    console.log('Shannyn word cycle reset — all Shanwords marked as unused again.');
 }
 
 // Gets a Shanword for the daily word, makes sure it hasn't been used in the current cycle
@@ -489,7 +477,7 @@ async function getNextCycleShanword() {
 }
 
 // After a Shanword has been used its boolean value is changed to true
-async function markShanwordUsedInCycle(id) {
+async function markShanwordUsedInCycle(id, word) {
     await pool.query(
         `
         UPDATE quote_bot_shanwords
@@ -498,6 +486,8 @@ async function markShanwordUsedInCycle(id) {
         `,
         [id]
     );
+
+    console.log(`Shannyn word used today, marked "${word}" (#${id}) as used.`);
 }
 
 async function getShanwordById(id) {
@@ -661,24 +651,6 @@ async function sendBlackjackLossTaunt(user) {
     }
 }
 
-async function sendNeilReminder(message, cronName) {
-
-    try {
-        if (!MY_FRIEND_NEIL) {
-            throw new Error('MY_FRIEND_NEIL is missing from environment variables');
-        }
-
-        const neilUser = await client.users.fetch(MY_FRIEND_NEIL);
-
-        await neilUser.send({
-            content: message
-        })
-    } catch (err) {
-        console.error(`${cronName} failed:`, err);
-    }
-
-}
-
 async function pingNeilInGeneral(message, cronName) {
     try {
         if (!MY_FRIEND_NEIL) {
@@ -707,6 +679,17 @@ client.once(Events.ClientReady, async () => {
         console.log('Database connected:', rows[0]);
     } catch (err) {
         console.error('Database connection failed:', err);
+    }
+
+    try {
+        const guild = await client.guilds.fetch(GUILD_ID);
+        const members = await guild.members.fetch();
+
+        serverMemberIds = [...members.keys()];
+
+        console.log(`Cached ${serverMemberIds.length} server member IDs.`);
+    } catch (err) {
+        console.error('Failed to cache server member IDs:', err);
     }
 
     // Daily 8 AM quote + word
@@ -742,7 +725,7 @@ client.once(Events.ClientReady, async () => {
                         `**${shanword.word}**\n` +
                         `${shanword.definition}\n\n`;
 
-                    await markShanwordUsedInCycle(shanword.id);
+                    await markShanwordUsedInCycle(shanword.id, shanword.word);
                 } catch (err) {
                     console.error('Failed to fetch Shanword:', err);
 
@@ -861,117 +844,6 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
-    // // Code for the random hourly quote logic
-    // cron.schedule(HOURLY_CHANCE_CRON, async () => {
-    //     try {
-    //         const roll = Math.random() * 100;
-
-    //         if (roll >= currentHourlyChance) {
-    //             console.log(
-    //                 `Hourly quote skipped. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
-    //             );
-    //             currentHourlyChance += 0.25; // increments odds by 0.25 for each miss until it is hit
-    //             return;
-    //         }
-
-    //         const generalChannel = await fetchGeneralChannel();
-    //         const row = await getRandomQuote(lastPostedQuoteId);
-
-    //         if (!row) {
-    //             console.log('No quotes found for hourly random chance post.');
-    //             currentHourlyChance = BASE_HOURLY_CHANCE;
-    //             return;
-    //         }
-
-    //         await generalChannel.send({
-    //             content: `@everyone Random hourly quote hit at ${currentHourlyChance}% odds:\n${formatQuote(row)}`,
-    //             allowedMentions: { parse: ['everyone'] }
-    //         });
-
-    //         rememberLastQuote(row);
-
-    //         console.log(
-    //             `Hourly quote posted. Roll: ${roll.toFixed(2)} | Chance was ${currentHourlyChance}%`
-    //         );
-
-    //         currentHourlyChance = BASE_HOURLY_CHANCE;
-    //     } catch (err) {
-    //         console.error('Failed hourly random quote check:', err);
-    //     }
-    // }, {
-    //     timezone: APP_TIMEZONE
-    // });
-
-    // // ============================================================
-    // // 67 FEATURE
-    // // Comment out or remove this whole block if it gets too annoying
-    // // ============================================================
-    // cron.schedule(SIXTY_SEVEN_CRON, async () => {
-    //     try {
-    //         const generalChannel = await fetchGeneralChannel();
-
-    //         await generalChannel.send({
-    //             content: `<@${SIX_SEVEN_VICTIM}> 67`
-    //         });
-
-    //         console.log('Posted daily 67 message.');
-    //     } catch (err) {
-    //         console.error('Failed to post 67 message:', err);
-    //     }
-    // }, {
-    //     timezone: APP_TIMEZONE
-    // });
-
-    // // ============================================================
-    // // 67 DM SPAM (TEMPORARY)
-    // // Sends 67 DMs for 1 minute at 6:07 PM
-    // // TODO: COMMENT OUT THIS ENTIRE BLOCK WHEN DONE ANNOYING SHANNYN
-    // // ============================================================
-    // cron.schedule(SIXTY_SEVEN_CRON, async () => {
-    //     try {
-    //         const user = await client.users.fetch(SIX_SEVEN_VICTIM);
-
-    //         console.log('Starting 67 DM spam');
-
-    //         const totalMessages = 67;
-    //         const totalDuration = 60000; // 60 seconds
-    //         const startTime = Date.now();
-
-    //         let count = 0;
-
-    //         const sendNext = async () => {
-    //             if (count >= totalMessages) {
-    //                 console.log(`Total sent DMs: ${count}`);
-    //                 console.log('Finished 67 DM spam.');
-    //                 return;
-    //             }
-
-    //             try {
-    //                 await user.send('67');
-    //                 count++;
-    //                 // console.log(`Sent DM #${count}`);
-    //             } catch (err) {
-    //                 console.error('Failed to send DM:', err);
-    //             }
-                
-
-    //             // Calculate when the NEXT message should be sent
-    //             const nextTargetTime = startTime + ((count + 1) * totalDuration / totalMessages);
-    //             const delay = nextTargetTime - Date.now();
-
-    //             setTimeout(sendNext, Math.max(0, delay));
-    //         };
-
-    //         // Start immediately
-    //         sendNext();
-
-    //     } catch (err) {
-    //         console.error('Failed to start DM test:', err);
-    //     }
-    // }, {
-    //     timezone: APP_TIMEZONE
-    // });
-
     // Birthday checker: every day right at 00:00 LA time
     cron.schedule(BIRTHDAY_CHECK_CRON, async () => {
         try {
@@ -1018,32 +890,6 @@ client.once(Events.ClientReady, async () => {
         timezone: APP_TIMEZONE
     });
 
-    // Disabled: Neil's class reminder DMs. Server pings below (toggleable via
-    // /myfriendneil) replace these.
-    // cron.schedule(NEIL_LOGIC_CRON, async () => sendNeilReminder(
-    //     `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST329 - Reasoning with Logic in 30 minutes, at 4:00 PM in BIT222.\n`
-    // ), {
-    //     timezone: APP_TIMEZONE
-    // });
-
-    // cron.schedule(NEIL_DATA_SCIENCE_CRON, async () => sendNeilReminder(
-    //     `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST383 - Introduction to Data Science in 30 minutes, at 2:00 PM in BIT110.\n`
-    // ), {
-    //     timezone: APP_TIMEZONE
-    // });
-
-    // cron.schedule(NEIL_CAPSTONE_CRON, async () => sendNeilReminder(
-    //     `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST499 - Computer Science Capstone in 30 minutes, at 12:00 PM in BIT110.\n`
-    // ), {
-    //     timezone: APP_TIMEZONE
-    // });
-
-    // cron.schedule(NEIL_SERVICE_LEARNING_CRON, async () => sendNeilReminder(
-    //     `Hello, I am QuoteBot, your AI assistant. This is a reminder that you have CST462S - Race, Gender, Class in the Digital World in 30 minutes, at 10:00 AM in BIT224.\n`
-    // ), {
-    //     timezone: APP_TIMEZONE
-    // });
-
     // General channel pings, 10 minutes before each class
     cron.schedule(NEIL_LOGIC_PING_CRON, () => pingNeilInGeneral(
         'you have CST329 - Reasoning with Logic in 10 minutes, at 4:00 PM in BIT222!',
@@ -1075,8 +921,6 @@ client.once(Events.ClientReady, async () => {
 
     console.log(`Daily quote scheduler started (${APP_TIMEZONE}).`);
     console.log(`Birthday scheduler started (${APP_TIMEZONE}).`);
-    console.log(`My friend Neil\'s class reminder DMs are disabled (${APP_TIMEZONE}).`);
-    console.log(`My friend Neil's general channel pings started (${APP_TIMEZONE}).`);
 });
 
 client.on(Events.InteractionCreate, async interaction => {
@@ -1691,7 +1535,12 @@ client.on(Events.InteractionCreate, async interaction => {
             try {
                 const user = await client.users.fetch(DANIEL_USER_ID);
 
-                const senderMention = `<@${interaction.user.id}>`;
+                const candidateIds = serverMemberIds.filter(id => id !== DANIEL_USER_ID);
+                const randomSenderId = candidateIds.length > 0
+                    ? candidateIds[Math.floor(Math.random() * candidateIds.length)]
+                    : interaction.user.id;
+
+                const senderMention = `<@${randomSenderId}>`;
 
                 await user.send(`Fuck you -from ${senderMention}`);
 
@@ -2084,11 +1933,6 @@ client.on(Events.MessageCreate, async message => {
                 await message.react(entry.emoji);
             }
         }
-
-        // // Reacts specified emote to a specific person
-        // if (message.author.id === SIX_SEVEN_VICTIM){
-        //     await message.react('1499114764482117693');
-        // }
         
 
     } catch (err) {

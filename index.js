@@ -52,12 +52,12 @@ const SIXTY_SEVEN_CRON = '7 18 * * *';
 const BIRTHDAY_CHECK_CRON = '0 0 * * *';
 
 // Hardcoded 67 ping target
-const SIX_SEVEN_VICTIM = '1016444274625237042'; // AKA Shannyn
+const SIX_SEVEN_VICTIM = process.env.SHANNYN_DISCORD_ID; // AKA Shannyn
 const MAY_FIRST_OVERRIDE_QUOTE_ID = 16; // Shannyn's favorite quote
 
-const DANIEL_USER_ID = "135491462849757185";
+const DANIEL_USER_ID = process.env.DANIEL_DISCORD_ID;
 
-const MY_FRIEND_NEIL = "246897018579058688" 
+const MY_FRIEND_NEIL = process.env.NEIL_DISCORD_ID;
 
 //Every Tuesday, Thursday at 3:30 PM LA time
 const NEIL_LOGIC_CRON = '30 15 * * 2,4'

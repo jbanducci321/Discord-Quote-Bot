@@ -1773,6 +1773,27 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
+        else if (commandName === 'lodgecomplaint') {
+            const complaint = interaction.options.getString('complaint');
+
+            console.log(`${interaction.user.username} lodged a complaint: "${complaint}"`);
+
+            await interaction.reply({
+                content: '✅ Your complaint has been lodged.',
+                ephemeral: true
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 5000));
+
+            try {
+                const user = await client.users.fetch(interaction.user.id);
+
+                await user.send('Pussy');
+            } catch (err) {
+                console.error('lodgecomplaint DM failed:', err);
+            }
+        }
+
         else if (commandName === 'bjsolo') {
             if (activeBlackjackGames.has(interaction.user.id)) {
                 await interaction.reply({

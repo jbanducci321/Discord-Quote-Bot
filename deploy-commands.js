@@ -183,6 +183,14 @@ const commands = [
                 .setRequired(true)),
 
     new SlashCommandBuilder()
+        .setName('lodgecomplaint')
+        .setDescription('Lodge a complaint')
+        .addStringOption(option =>
+            option.setName('complaint')
+                .setDescription('Your complaint')
+                .setRequired(true)),
+
+    new SlashCommandBuilder()
         .setName('bjsolo')
         .setDescription('Play a solo game of blackjack against the bot'),
 

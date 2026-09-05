@@ -12,6 +12,10 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Gates every secret this job touches behind the "production" environment's
+    # deployment branch policy (main only) — a workflow pushed to any other
+    # branch is refused here before secrets are ever injected.
+    environment: production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

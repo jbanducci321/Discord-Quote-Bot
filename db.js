@@ -21,4 +21,30 @@ const pool = mysql.createPool({
     waitForConnections: true
 });
 
+// RDS closes connections that sit idle past its wait_timeout (default 8h). A
+// pooled connection can go stale between queries without the pool noticing
+// until it's actually used, so retry once against a fresh connection instead
+// of letting a whole cron run fail because it happened to draw the stale one.
+const TRANSIENT_ERROR_CODES = new Set([
+    'PROTOCOL_CONNECTION_LOST',
+    'ECONNRESET',
+    'ER_CLIENT_INTERACTION_TIMEOUT',
+    'ETIMEDOUT'
+]);
+
+const rawQuery = pool.query.bind(pool);
+
+pool.query = async (...args) => {
+    try {
+        return await rawQuery(...args);
+    } catch (err) {
+        if (!TRANSIENT_ERROR_CODES.has(err.code)) {
+            throw err;
+        }
+
+        console.warn(`Retrying query after transient DB error (${err.code})`);
+        return await rawQuery(...args);
+    }
+};
+
 export default pool;

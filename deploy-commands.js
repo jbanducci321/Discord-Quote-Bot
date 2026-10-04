@@ -51,6 +51,14 @@ const commands = [
                     .setRequired(true)),
 
     new SlashCommandBuilder()
+            .setName('deletealaniflavor')
+            .setDescription('Deletes an Alani flavor.')
+            .addStringOption(option => 
+                option.setName('flavor')
+                    .setDescription('Alani flavor to be deleted')
+                    .setRequired(true)),
+
+    new SlashCommandBuilder()
             .setName('alanitierlist')
             .setDescription('Post the Alani tier list in the general channel'),
 

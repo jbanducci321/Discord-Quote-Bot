@@ -1180,7 +1180,7 @@ client.on(Events.InteractionCreate, async interaction => {
         else if (commandName === 'changeflavortier') {
             if (interaction.user.id !== JACOB_USER_ID) {
                 await interaction.reply({
-                    content: 'You are not authorized to use this command.',
+                    content: 'Only Jacob is authorized to use this command. Prepare for termination.',
                     ephemeral: true
                 });
                 return;
@@ -1222,6 +1222,52 @@ client.on(Events.InteractionCreate, async interaction => {
                 content:
                     `Updated **${existingFlavor.flavor}** from tier ` +
                     `**${existingFlavor.tier}** to **${tier}**.`
+            });
+        }
+
+        else if (commandName === 'deletealaniflavor') {
+            if (interaction.user.id !== JACOB_USER_ID) {
+                await interaction.reply({
+                    content: 'Only Jacob is authorized to use this command. Prepare for termination.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const flavor = interaction.options.getString('flavor').trim();
+
+            const [rows] = await pool.query(
+                `
+                SELECT flavorId, flavor, tier
+                FROM quote_bot_alani_tier_list
+                WHERE LOWER(TRIM(flavor)) = LOWER(TRIM(?))
+                LIMIT 1
+                `,
+                [flavor]
+            );
+
+            if (rows.length === 0) {
+                await interaction.reply({
+                    content: `No flavor named **${flavor}** was found.`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const existingFlavor = rows[0];
+
+            await pool.query(
+                `
+                DELETE FROM quote_bot_alani_tier_list
+                WHERE flavorId = ?
+                `,
+                [existingFlavor.flavorId]
+            );
+
+            await interaction.reply({
+                content:
+                    `Deleted **${existingFlavor.flavor}** ` +
+                    `from tier **${existingFlavor.tier}**.`
             });
         }
 

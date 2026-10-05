@@ -60,7 +60,13 @@ const commands = [
 
     new SlashCommandBuilder()
             .setName('alanitierlist')
-            .setDescription('Post the Alani tier list in the general channel'),
+            .setDescription('Show the Alani tier list in the general channel or privately in the bot channel')
+            .addIntegerOption(option =>
+                option.setName('location')
+                    .setDescription('Where to show it: 1 = general channel, 2 = bot channel (only you see it)')
+                    .setRequired(true)
+                    .setMinValue(1)
+                    .setMaxValue(2)),
 
     new SlashCommandBuilder()
         .setName('randomquote')

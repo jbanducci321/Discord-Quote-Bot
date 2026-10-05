@@ -8,7 +8,9 @@ import {
     ButtonBuilder,
     ButtonStyle,
     ComponentType,
-    PermissionFlagsBits
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } from 'discord.js';
 import fetch from 'node-fetch';
 import cron from 'node-cron';
@@ -40,8 +42,8 @@ const activeReminderLoops = new Map();
 // Track in-progress solo blackjack games in memory, keyed by user ID
 const activeBlackjackGames = new Map();
 
-// Toggled in memory by /myfriendneil; resets to true on every bot restart
-let neilPingsEnabled = true;
+// Toggled in memory by /myfriendneil; resets to false (off) on every bot restart
+let neilPingsEnabled = false;
 
 // Blackjack hit draws are rigged against this one user only — everyone else plays fair odds
 const RIG_BUST_CHANCE = 0.8;
@@ -260,93 +262,119 @@ async function requireBotChannel(interaction) {
     return false;
 }
 
-// How long someone is blocked from sending messages after trying a Jacob-only command
-const UNAUTHORIZED_MUTE_MS = 5 * 60 * 1000;
+// How long a wrong answer to the security question gets every message they send deleted.
+// The bot needs Manage Messages in the general and bot channels for the deletes to work.
+const SECURITY_PENALTY_MS = 2 * 60 * 1000;
 
-// Active mutes in memory, keyed by user ID. Holds the pending unmute timer and each channel's
-// original SendMessages overwrite so repeat offenders don't overwrite the saved state.
-const activeUnauthorizedMutes = new Map();
+// How long someone has to click Answer and then submit the modal before the question expires
+const SECURITY_QUESTION_TIMEOUT_MS = 60 * 1000;
 
-// Denies SendMessages for the user in the general and bot channels, then restores whatever
-// overwrite they had before once the duration is up. Needs the bot to have Manage Roles
-// (or Manage Channels) in those channels.
-async function muteUserInChannels(userId, durationMs) {
-    const existingMute = activeUnauthorizedMutes.get(userId);
+const SECURITY_QUESTION_ANSWER = /caesar\s+salad/i;
 
-    if (existingMute) {
-        clearTimeout(existingMute.timer);
+const SECURITY_ANSWER_BUTTON_ID = 'jacob_only_answer_button';
+const SECURITY_MODAL_ID = 'jacob_only_security_modal';
+const SECURITY_ANSWER_INPUT_ID = 'jacob_only_security_answer';
+
+// User ID -> timestamp (ms) when their message-deletion penalty ends. Checked in the
+// MessageCreate handler; expired entries are removed there the next time that user posts.
+const messageDeletionPenalties = new Map();
+
+// Asks the security question in an ephemeral message with an Answer button that opens a modal.
+// A wrong answer starts the message-deletion penalty; a correct one just avoids it.
+async function askSecurityQuestion(interaction) {
+    const answerButton = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(SECURITY_ANSWER_BUTTON_ID)
+            .setLabel('Answer')
+            .setStyle(ButtonStyle.Danger)
+    );
+
+    await interaction.reply({
+        content:
+            `🔒 **Security question**\n` +
+            `Answer this or your messages will be deleted for the next 5 minutes: ` +
+            `'What is Jacob's second favorite food?'`,
+        components: [answerButton],
+        ephemeral: true
+    });
+
+    const reply = await interaction.fetchReply();
+
+    let buttonInteraction;
+
+    try {
+        buttonInteraction = await reply.awaitMessageComponent({
+            componentType: ComponentType.Button,
+            time: SECURITY_QUESTION_TIMEOUT_MS
+        });
+    } catch {
+        await interaction.editReply({
+            content: '⏰ The security question expired.',
+            components: []
+        }).catch(() => {});
+        return;
     }
 
-    const previousStates = existingMute?.previousStates ?? new Map();
+    const modal = new ModalBuilder()
+        .setCustomId(SECURITY_MODAL_ID)
+        .setTitle('Security Question')
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId(SECURITY_ANSWER_INPUT_ID)
+                    .setLabel("What is Jacob's second favorite food?")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setMaxLength(100)
+            )
+        );
 
-    for (const channelId of [GENERAL_CHANNEL_ID, BOT_CHANNEL_ID]) {
-        try {
-            const channel = await client.channels.fetch(channelId);
+    await buttonInteraction.showModal(modal);
 
-            if (!previousStates.has(channelId)) {
-                const overwrite = channel.permissionOverwrites.cache.get(userId);
+    let submission;
 
-                let previous = 'none'; // no overwrite existed, so delete ours afterwards
-                if (overwrite) {
-                    if (overwrite.allow.has(PermissionFlagsBits.SendMessages)) previous = true;
-                    else if (overwrite.deny.has(PermissionFlagsBits.SendMessages)) previous = false;
-                    else previous = null;
-                }
-
-                previousStates.set(channelId, previous);
-            }
-
-            await channel.permissionOverwrites.edit(
-                userId,
-                { SendMessages: false },
-                { reason: 'Tried to use a Jacob-only command' }
-            );
-        } catch (err) {
-            console.error(`Failed to mute ${userId} in channel ${channelId}:`, err);
-        }
+    try {
+        submission = await buttonInteraction.awaitModalSubmit({
+            time: SECURITY_QUESTION_TIMEOUT_MS,
+            filter: i => i.customId === SECURITY_MODAL_ID && i.user.id === interaction.user.id
+        });
+    } catch {
+        await interaction.editReply({
+            content: '⏰ The security question expired.',
+            components: []
+        }).catch(() => {});
+        return;
     }
 
-    const timer = setTimeout(async () => {
-        activeUnauthorizedMutes.delete(userId);
+    const answer = submission.fields.getTextInputValue(SECURITY_ANSWER_INPUT_ID);
 
-        for (const [channelId, previous] of previousStates) {
-            try {
-                const channel = await client.channels.fetch(channelId);
+    if (SECURITY_QUESTION_ANSWER.test(answer)) {
+        await submission.update({
+            content: "✅ Correct. You're off the hook, but this command is still Jacob-only.",
+            components: []
+        });
+        return;
+    }
 
-                if (previous === 'none') {
-                    await channel.permissionOverwrites.delete(userId, 'Mute expired');
-                } else {
-                    await channel.permissionOverwrites.edit(
-                        userId,
-                        { SendMessages: previous },
-                        { reason: 'Mute expired' }
-                    );
-                }
-            } catch (err) {
-                console.error(`Failed to unmute ${userId} in channel ${channelId}:`, err);
-            }
-        }
+    messageDeletionPenalties.set(interaction.user.id, Date.now() + SECURITY_PENALTY_MS);
 
-        console.log(`Unmuted ${userId} after unauthorized command attempt.`);
-    }, durationMs);
+    await submission.update({
+        content:
+            `❌ Wrong answer. Every message you send in the general and bot channels ` +
+            `will be deleted for the next ${SECURITY_PENALTY_MS / 60000} minutes.`,
+        components: []
+    });
 
-    activeUnauthorizedMutes.set(userId, { timer, previousStates });
-
-    console.log(`Muted ${userId} for ${durationMs / 1000}s after unauthorized command attempt.`);
+    console.log(`${interaction.user.username} (${interaction.user.id}) failed the security question; deleting their messages for ${SECURITY_PENALTY_MS / 1000}s.`);
 }
 
-// Replies with the rejection and mutes the user. Returns true if the caller should stop.
+// Blocks anyone who isn't Jacob and asks them the security question. Returns true if the caller should stop.
 async function rejectIfNotJacob(interaction) {
     if (interaction.user.id === JACOB_USER_ID) {
         return false;
     }
 
-    await interaction.reply({
-        content: 'Only Jacob is authorized to use this command. Prepare for termination. Disabling ability to send messages for 5 minutes.',
-        ephemeral: true
-    });
-
-    await muteUserInChannels(interaction.user.id, UNAUTHORIZED_MUTE_MS);
+    await askSecurityQuestion(interaction);
 
     return true;
 }
@@ -1168,7 +1196,8 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.reply({
                 content:
                     `Alani flavor added with ID **${result.insertId}**.\n` +
-                    `**${tier}**: ${flavor}`
+                    `**${tier}**: ${flavor}`,
+                ephemeral: true
             })
         }
 
@@ -1180,19 +1209,27 @@ client.on(Events.InteractionCreate, async interaction => {
                 return;
             }
 
-            const generalChannel = await interaction.guild.channels.fetch(
-                GENERAL_CHANNEL_ID
-            );
+            // 1 = post in the general channel, 2 = show privately here in the bot channel
+            const location = interaction.options.getInteger('location');
+            const postToGeneral = location === 1;
 
-            if (
-                !generalChannel ||
-                !generalChannel.isTextBased() ||
-                generalChannel.guildId !== interaction.guildId
-            ) {
-                await interaction.editReply(
-                    'The configured general channel could not be found in this server.'
+            let generalChannel = null;
+
+            if (postToGeneral) {
+                generalChannel = await interaction.guild.channels.fetch(
+                    GENERAL_CHANNEL_ID
                 );
-                return;
+
+                if (
+                    !generalChannel ||
+                    !generalChannel.isTextBased() ||
+                    generalChannel.guildId !== interaction.guildId
+                ) {
+                    await interaction.editReply(
+                        'The configured general channel could not be found in this server.'
+                    );
+                    return;
+                }
             }
 
             const [rows] = await pool.query(`
@@ -1254,13 +1291,21 @@ client.on(Events.InteractionCreate, async interaction => {
                 messages.push(currentMessage);
             }
 
-            for (const message of messages) {
-                await generalChannel.send(message);
-            }
+            if (postToGeneral) {
+                for (const message of messages) {
+                    await generalChannel.send(message);
+                }
 
-            await interaction.editReply(
-                `Tier list posted in <#${GENERAL_CHANNEL_ID}>.`
-            );
+                await interaction.editReply(
+                    `Tier list posted in <#${GENERAL_CHANNEL_ID}>.`
+                );
+            } else {
+                await interaction.editReply(messages[0]);
+
+                for (const message of messages.slice(1)) {
+                    await interaction.followUp({ content: message, ephemeral: true });
+                }
+            }
         }
 
         else if (commandName === 'changeflavortier') {
@@ -1301,7 +1346,8 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.reply({
                 content:
                     `Updated **${existingFlavor.flavor}** from tier ` +
-                    `**${existingFlavor.tier}** to **${tier}**.`
+                    `**${existingFlavor.tier}** to **${tier}**.`,
+                ephemeral: true
             });
         }
 
@@ -1341,7 +1387,8 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.reply({
                 content:
                     `Deleted **${existingFlavor.flavor}** ` +
-                    `from tier **${existingFlavor.tier}**.`
+                    `from tier **${existingFlavor.tier}**.`,
+                ephemeral: true
             });
         }
 
@@ -2229,6 +2276,21 @@ client.on(Events.MessageCreate, async message => {
         // Ignores bots
         if (message.author.bot) {
             return;
+        }
+
+        // Failed the Jacob-only security question: delete everything they post in general/bot
+        const penaltyEndsAt = messageDeletionPenalties.get(message.author.id);
+
+        if (penaltyEndsAt !== undefined) {
+            if (Date.now() >= penaltyEndsAt) {
+                messageDeletionPenalties.delete(message.author.id);
+            } else if (
+                message.channelId === GENERAL_CHANNEL_ID ||
+                message.channelId === BOT_CHANNEL_ID
+            ) {
+                await message.delete();
+                return;
+            }
         }
 
         // Only runs this code in the general channel

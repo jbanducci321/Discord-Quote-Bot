@@ -7,7 +7,8 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    ComponentType
+    ComponentType,
+    PermissionFlagsBits
 } from 'discord.js';
 import fetch from 'node-fetch';
 import cron from 'node-cron';
@@ -257,6 +258,97 @@ async function requireBotChannel(interaction) {
     });
 
     return false;
+}
+
+// How long someone is blocked from sending messages after trying a Jacob-only command
+const UNAUTHORIZED_MUTE_MS = 5 * 60 * 1000;
+
+// Active mutes in memory, keyed by user ID. Holds the pending unmute timer and each channel's
+// original SendMessages overwrite so repeat offenders don't overwrite the saved state.
+const activeUnauthorizedMutes = new Map();
+
+// Denies SendMessages for the user in the general and bot channels, then restores whatever
+// overwrite they had before once the duration is up. Needs the bot to have Manage Roles
+// (or Manage Channels) in those channels.
+async function muteUserInChannels(userId, durationMs) {
+    const existingMute = activeUnauthorizedMutes.get(userId);
+
+    if (existingMute) {
+        clearTimeout(existingMute.timer);
+    }
+
+    const previousStates = existingMute?.previousStates ?? new Map();
+
+    for (const channelId of [GENERAL_CHANNEL_ID, BOT_CHANNEL_ID]) {
+        try {
+            const channel = await client.channels.fetch(channelId);
+
+            if (!previousStates.has(channelId)) {
+                const overwrite = channel.permissionOverwrites.cache.get(userId);
+
+                let previous = 'none'; // no overwrite existed, so delete ours afterwards
+                if (overwrite) {
+                    if (overwrite.allow.has(PermissionFlagsBits.SendMessages)) previous = true;
+                    else if (overwrite.deny.has(PermissionFlagsBits.SendMessages)) previous = false;
+                    else previous = null;
+                }
+
+                previousStates.set(channelId, previous);
+            }
+
+            await channel.permissionOverwrites.edit(
+                userId,
+                { SendMessages: false },
+                { reason: 'Tried to use a Jacob-only command' }
+            );
+        } catch (err) {
+            console.error(`Failed to mute ${userId} in channel ${channelId}:`, err);
+        }
+    }
+
+    const timer = setTimeout(async () => {
+        activeUnauthorizedMutes.delete(userId);
+
+        for (const [channelId, previous] of previousStates) {
+            try {
+                const channel = await client.channels.fetch(channelId);
+
+                if (previous === 'none') {
+                    await channel.permissionOverwrites.delete(userId, 'Mute expired');
+                } else {
+                    await channel.permissionOverwrites.edit(
+                        userId,
+                        { SendMessages: previous },
+                        { reason: 'Mute expired' }
+                    );
+                }
+            } catch (err) {
+                console.error(`Failed to unmute ${userId} in channel ${channelId}:`, err);
+            }
+        }
+
+        console.log(`Unmuted ${userId} after unauthorized command attempt.`);
+    }, durationMs);
+
+    activeUnauthorizedMutes.set(userId, { timer, previousStates });
+
+    console.log(`Muted ${userId} for ${durationMs / 1000}s after unauthorized command attempt.`);
+}
+
+// Replies with the rejection and mutes the user. Returns true if the caller should stop.
+async function rejectIfNotJacob(interaction) {
+    if (interaction.user.id === JACOB_USER_ID) {
+        return false;
+    }
+
+    await interaction.reply({
+        content: 'Only Jacob is authorized to use this command. Prepare for termination. Disabling ability to send messages for 5 minutes.',
+        ephemeral: true
+    });
+
+    await muteUserInChannels(interaction.user.id, UNAUTHORIZED_MUTE_MS);
+
+    return true;
 }
 
 function getLosAngelesNowParts() {
@@ -1033,13 +1125,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         else if (commandName === 'addalaniflavor') {
-            if (interaction.user.id !== JACOB_USER_ID) {
-                    await interaction.reply({
-                        content: 'Only Jacob is authorized to use this command. Prepare for termination.',
-                        ephemeral: true
-                    });
-                    return;
-                }
+            if (await rejectIfNotJacob(interaction)) return;
 
             const tier = interaction.options.getString('tier').trim();
             const flavor = interaction.options.getString('flavor').trim();
@@ -1178,13 +1264,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         else if (commandName === 'changeflavortier') {
-            if (interaction.user.id !== JACOB_USER_ID) {
-                await interaction.reply({
-                    content: 'Only Jacob is authorized to use this command. Prepare for termination.',
-                    ephemeral: true
-                });
-                return;
-            }
+            if (await rejectIfNotJacob(interaction)) return;
 
             const flavor = interaction.options.getString('flavor').trim();
             const tier = interaction.options.getString('tier').trim();
@@ -1226,13 +1306,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         else if (commandName === 'deletealaniflavor') {
-            if (interaction.user.id !== JACOB_USER_ID) {
-                await interaction.reply({
-                    content: 'Only Jacob is authorized to use this command. Prepare for termination.',
-                    ephemeral: true
-                });
-                return;
-            }
+            if (await rejectIfNotJacob(interaction)) return;
 
             const flavor = interaction.options.getString('flavor').trim();
 

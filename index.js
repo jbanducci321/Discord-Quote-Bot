@@ -61,6 +61,8 @@ const DANIEL_USER_ID = process.env.DANIEL_DISCORD_ID;
 
 const MY_FRIEND_NEIL = process.env.NEIL_DISCORD_ID;
 
+const JACOB_USER_ID = process.env.JACOB_USER_ID;
+
 // Same classes Neil has, firing 10 minutes before each one — used for the general channel ping
 //Every Tuesday, Thursday at 3:50 PM LA time
 const NEIL_LOGIC_PING_CRON = '50 15 * * 2,4'
@@ -1027,6 +1029,245 @@ client.on(Events.InteractionCreate, async interaction => {
                     `Shanword added with ID **${result.insertId}**.\n` +
                     `**${word}**: ${definition}`,
                 ephemeral: true
+            });
+        }
+
+        else if (commandName === 'addalaniflavor') {
+            if (interaction.user.id !== JACOB_USER_ID) {
+                    await interaction.reply({
+                        content: 'Only Jacob is authorized to use this command. Prepare for termination.',
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+            const tier = interaction.options.getString('tier').trim();
+            const flavor = interaction.options.getString('flavor').trim();
+
+            const [duplicateRows] = await pool.query(
+                `
+                SELECT *
+                FROM quote_bot_alani_tier_list
+                WHERE LOWER(TRIM(flavor)) = LOWER(TRIM(?))
+                LIMIT 1
+                `,
+                [flavor]
+            )
+
+            if (duplicateRows.length > 0) {
+                const existing = duplicateRows[0];
+
+                await interaction.reply({
+                    content:
+                        `That flavor already exists with ID **#${existing.flavorId}**.\n` +
+                        `**${tier}**: ${flavor}`,
+                    ephemeral: true
+                });
+                return
+            }
+
+            const sql = `
+                INSERT INTO quote_bot_alani_tier_list
+                (tier, flavor)
+                VALUES (?, ?)
+            `;
+
+            const sqlParams = [
+                tier,
+                flavor
+            ];
+
+            const [result] = await pool.query(sql, sqlParams);
+
+            await interaction.reply({
+                content:
+                    `Alani flavor added with ID **${result.insertId}**.\n` +
+                    `**${tier}**: ${flavor}`
+            })
+        }
+
+        else if (commandName === 'alanitierlist') {
+            await interaction.deferReply({ ephemeral: true });
+
+            if (!interaction.guild) {
+                await interaction.editReply('This command can only be used in a server.');
+                return;
+            }
+
+            const generalChannel = await interaction.guild.channels.fetch(
+                GENERAL_CHANNEL_ID
+            );
+
+            if (
+                !generalChannel ||
+                !generalChannel.isTextBased() ||
+                generalChannel.guildId !== interaction.guildId
+            ) {
+                await interaction.editReply(
+                    'The configured general channel could not be found in this server.'
+                );
+                return;
+            }
+
+            const [rows] = await pool.query(`
+                SELECT tier, flavor
+                FROM quote_bot_alani_tier_list
+                ORDER BY flavorId ASC
+            `);
+
+            if (rows.length === 0) {
+                await interaction.editReply('The Alani flavor tier list is empty.');
+                return;
+            }
+
+            const tierOrder = ['S', 'A', 'B', 'C', 'D', 'F'];
+
+            const groupedTiers = new Map();
+
+            for (const row of rows) {
+                const tier = row.tier.trim();
+
+                if (!groupedTiers.has(tier)) {
+                    groupedTiers.set(tier, []);
+                }
+
+                groupedTiers.get(tier).push(row.flavor);
+            }
+
+            const sortedTiers = [...groupedTiers.entries()].sort(([tierA], [tierB]) => {
+                const indexA = tierOrder.indexOf(tierA);
+                const indexB = tierOrder.indexOf(tierB);
+
+                return (
+                    (indexA === -1 ? Number.MAX_SAFE_INTEGER : indexA) -
+                    (indexB === -1 ? Number.MAX_SAFE_INTEGER : indexB)
+                );
+            });
+
+            const lines = ['**Alani Flavor Tier List**', ''];
+
+            for (const [tier, flavors] of sortedTiers) {
+                lines.push(`**${tier} Tier**`);
+                lines.push(...flavors.map(flavor => `• ${flavor}`));
+                lines.push('');
+            }
+
+            const messages = [];
+            let currentMessage = '';
+
+            for (const line of lines) {
+                if ((currentMessage + line + '\n').length > 2000) {
+                    messages.push(currentMessage);
+                    currentMessage = '';
+                }
+
+                currentMessage += `${line}\n`;
+            }
+
+            if (currentMessage.trim()) {
+                messages.push(currentMessage);
+            }
+
+            for (const message of messages) {
+                await generalChannel.send(message);
+            }
+
+            await interaction.editReply(
+                `Tier list posted in <#${GENERAL_CHANNEL_ID}>.`
+            );
+        }
+
+        else if (commandName === 'changeflavortier') {
+            if (interaction.user.id !== JACOB_USER_ID) {
+                await interaction.reply({
+                    content: 'Only Jacob is authorized to use this command. Prepare for termination.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const flavor = interaction.options.getString('flavor').trim();
+            const tier = interaction.options.getString('tier').trim();
+
+            const [rows] = await pool.query(
+                `
+                SELECT flavorId, flavor, tier
+                FROM quote_bot_alani_tier_list
+                WHERE LOWER(TRIM(flavor)) = LOWER(TRIM(?))
+                LIMIT 1
+                `,
+                [flavor]
+            );
+
+            if (rows.length === 0) {
+                await interaction.reply({
+                    content: `No flavor named **${flavor}** was found.`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const existingFlavor = rows[0];
+
+            await pool.query(
+                `
+                UPDATE quote_bot_alani_tier_list
+                SET tier = ?
+                WHERE flavorId = ?
+                `,
+                [tier, existingFlavor.flavorId]
+            );
+
+            await interaction.reply({
+                content:
+                    `Updated **${existingFlavor.flavor}** from tier ` +
+                    `**${existingFlavor.tier}** to **${tier}**.`
+            });
+        }
+
+        else if (commandName === 'deletealaniflavor') {
+            if (interaction.user.id !== JACOB_USER_ID) {
+                await interaction.reply({
+                    content: 'Only Jacob is authorized to use this command. Prepare for termination.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const flavor = interaction.options.getString('flavor').trim();
+
+            const [rows] = await pool.query(
+                `
+                SELECT flavorId, flavor, tier
+                FROM quote_bot_alani_tier_list
+                WHERE LOWER(TRIM(flavor)) = LOWER(TRIM(?))
+                LIMIT 1
+                `,
+                [flavor]
+            );
+
+            if (rows.length === 0) {
+                await interaction.reply({
+                    content: `No flavor named **${flavor}** was found.`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const existingFlavor = rows[0];
+
+            await pool.query(
+                `
+                DELETE FROM quote_bot_alani_tier_list
+                WHERE flavorId = ?
+                `,
+                [existingFlavor.flavorId]
+            );
+
+            await interaction.reply({
+                content:
+                    `Deleted **${existingFlavor.flavor}** ` +
+                    `from tier **${existingFlavor.tier}**.`
             });
         }
 

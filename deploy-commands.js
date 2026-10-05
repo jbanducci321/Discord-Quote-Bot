@@ -27,6 +27,42 @@ const commands = [
                 .setRequired(true)),
 
     new SlashCommandBuilder()
+            .setName('addalaniflavor')
+            .setDescription('Add an alani flavor to the tier list')
+            .addStringOption(option =>
+                option.setName('tier')
+                    .setDescription('Tier of the flavor (S, A, B, C, D, F)')
+                    .setRequired(true))
+            .addStringOption(option =>
+                option.setName('flavor')
+                    .setDescription('Alani flavor')
+                    .setRequired(true)),
+
+    new SlashCommandBuilder()
+            .setName('changeflavortier')
+            .setDescription('Change an Alani flavor\'s tier')
+            .addStringOption(option =>
+                option.setName('flavor')
+                    .setDescription('Alani flavor')
+                    .setRequired(true))
+            .addStringOption(option =>
+                option.setName('tier')
+                    .setDescription('New tier for the flavor')
+                    .setRequired(true)),
+
+    new SlashCommandBuilder()
+            .setName('deletealaniflavor')
+            .setDescription('Deletes an Alani flavor.')
+            .addStringOption(option => 
+                option.setName('flavor')
+                    .setDescription('Alani flavor to be deleted')
+                    .setRequired(true)),
+
+    new SlashCommandBuilder()
+            .setName('alanitierlist')
+            .setDescription('Post the Alani tier list in the general channel'),
+
+    new SlashCommandBuilder()
         .setName('randomquote')
         .setDescription('Post a random quote in the general channel'),
 

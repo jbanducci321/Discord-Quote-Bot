@@ -262,14 +262,31 @@ async function requireBotChannel(interaction) {
     return false;
 }
 
-// How long a wrong answer to the security question gets every message they send deleted.
+// How long every message someone sends is deleted after failing the security question.
 // The bot needs Manage Messages in the general and bot channels for the deletes to work.
-const SECURITY_PENALTY_MS = 2 * 60 * 1000;
+const SECURITY_WRONG_ANSWER_PENALTY_MS = 5 * 60 * 1000;
+const SECURITY_NO_ANSWER_PENALTY_MS = 10 * 60 * 1000;
 
-// How long someone has to click Answer and then submit the modal before the question expires
+// Total time to click Answer AND submit the modal before it counts as not answering
 const SECURITY_QUESTION_TIMEOUT_MS = 60 * 1000;
 
-const SECURITY_QUESTION_ANSWER = /caesar\s+salad/i;
+function normalizeSecurityText(text) {
+    return text.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// The answer lives only in the server's .env (SECURITY_QUESTION_ANSWER), never in the repo,
+// since anyone with repo access can read the code. An answer passes if it contains this
+// phrase, ignoring case and extra whitespace.
+const SECURITY_QUESTION_ANSWER = normalizeSecurityText(process.env.SECURITY_QUESTION_ANSWER ?? '');
+
+if (!SECURITY_QUESTION_ANSWER) {
+    console.warn('SECURITY_QUESTION_ANSWER is not set in .env, so every security question answer will be marked wrong.');
+}
+
+function isCorrectSecurityAnswer(answer) {
+    return SECURITY_QUESTION_ANSWER !== '' &&
+        normalizeSecurityText(answer).includes(SECURITY_QUESTION_ANSWER);
+}
 
 const SECURITY_ANSWER_BUTTON_ID = 'jacob_only_answer_button';
 const SECURITY_MODAL_ID = 'jacob_only_security_modal';
@@ -279,9 +296,31 @@ const SECURITY_ANSWER_INPUT_ID = 'jacob_only_security_answer';
 // MessageCreate handler; expired entries are removed there the next time that user posts.
 const messageDeletionPenalties = new Map();
 
+// Never shortens a penalty that is already running
+function startMessageDeletionPenalty(userId, durationMs) {
+    const endsAt = Math.max(messageDeletionPenalties.get(userId) ?? 0, Date.now() + durationMs);
+    messageDeletionPenalties.set(userId, endsAt);
+}
+
 // Asks the security question in an ephemeral message with an Answer button that opens a modal.
-// A wrong answer starts the message-deletion penalty; a correct one just avoids it.
+// A wrong answer or no answer within the time limit starts a message-deletion penalty; a
+// correct answer just avoids it.
 async function askSecurityQuestion(interaction) {
+    const deadline = Date.now() + SECURITY_QUESTION_TIMEOUT_MS;
+
+    const penalizeNoAnswer = async () => {
+        startMessageDeletionPenalty(interaction.user.id, SECURITY_NO_ANSWER_PENALTY_MS);
+
+        console.log(`${interaction.user.username} (${interaction.user.id}) didn't answer the security question in time; deleting their messages for ${SECURITY_NO_ANSWER_PENALTY_MS / 1000}s.`);
+
+        await interaction.editReply({
+            content:
+                `⏰ Time's up. Every message you send in the general and bot channels ` +
+                `will be deleted for the next ${SECURITY_NO_ANSWER_PENALTY_MS / 60000} minutes.`,
+            components: []
+        }).catch(() => {});
+    };
+
     const answerButton = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId(SECURITY_ANSWER_BUTTON_ID)
@@ -305,13 +344,10 @@ async function askSecurityQuestion(interaction) {
     try {
         buttonInteraction = await reply.awaitMessageComponent({
             componentType: ComponentType.Button,
-            time: SECURITY_QUESTION_TIMEOUT_MS
+            time: Math.max(deadline - Date.now(), 1)
         });
     } catch {
-        await interaction.editReply({
-            content: '⏰ The security question expired.',
-            components: []
-        }).catch(() => {});
+        await penalizeNoAnswer();
         return;
     }
 
@@ -335,20 +371,17 @@ async function askSecurityQuestion(interaction) {
 
     try {
         submission = await buttonInteraction.awaitModalSubmit({
-            time: SECURITY_QUESTION_TIMEOUT_MS,
+            time: Math.max(deadline - Date.now(), 1),
             filter: i => i.customId === SECURITY_MODAL_ID && i.user.id === interaction.user.id
         });
     } catch {
-        await interaction.editReply({
-            content: '⏰ The security question expired.',
-            components: []
-        }).catch(() => {});
+        await penalizeNoAnswer();
         return;
     }
 
     const answer = submission.fields.getTextInputValue(SECURITY_ANSWER_INPUT_ID);
 
-    if (SECURITY_QUESTION_ANSWER.test(answer)) {
+    if (isCorrectSecurityAnswer(answer)) {
         await submission.update({
             content: "✅ Correct. You're off the hook, but this command is still Jacob-only.",
             components: []
@@ -356,16 +389,16 @@ async function askSecurityQuestion(interaction) {
         return;
     }
 
-    messageDeletionPenalties.set(interaction.user.id, Date.now() + SECURITY_PENALTY_MS);
+    startMessageDeletionPenalty(interaction.user.id, SECURITY_WRONG_ANSWER_PENALTY_MS);
 
     await submission.update({
         content:
             `❌ Wrong answer. Every message you send in the general and bot channels ` +
-            `will be deleted for the next ${SECURITY_PENALTY_MS / 60000} minutes.`,
+            `will be deleted for the next ${SECURITY_WRONG_ANSWER_PENALTY_MS / 60000} minutes.`,
         components: []
     });
 
-    console.log(`${interaction.user.username} (${interaction.user.id}) failed the security question; deleting their messages for ${SECURITY_PENALTY_MS / 1000}s.`);
+    console.log(`${interaction.user.username} (${interaction.user.id}) failed the security question; deleting their messages for ${SECURITY_WRONG_ANSWER_PENALTY_MS / 1000}s.`);
 }
 
 // Blocks anyone who isn't Jacob and asks them the security question. Returns true if the caller should stop.
